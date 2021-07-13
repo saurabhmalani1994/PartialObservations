@@ -16,3 +16,4 @@ module load anaconda3/2020.11
 conda activate torch-env
 
 python train_model.py
+python make_plots.py

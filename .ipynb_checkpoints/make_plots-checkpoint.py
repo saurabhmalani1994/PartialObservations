@@ -124,8 +124,8 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.tt[1:],dataset_test.x1_out[0],'.-',label='true')
-        ax.plot(dataset_test.tt[1:],x1_out.detach().cpu().squeeze().numpy(),'.-',label='predicted')
+        ax.plot(dataset_test.tt[1:],dataset_test.x1_out[0],'x-',label='true')
+        ax.plot(dataset_test.tt[1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted')
         ax.set_xlabel('t')
         ax.set_ylabel('X1')
         plt.legend()
@@ -134,8 +134,8 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.tt[1:],dataset_test.x2_out[0],'.-',label='true')
-        ax.plot(dataset_test.tt[1:],x2_out.detach().cpu().squeeze().numpy(),'.-',label='predicted')
+        ax.plot(dataset_test.tt[1:],dataset_test.x2_out[0],'x-',label='true')
+        ax.plot(dataset_test.tt[1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted')
         ax.set_xlabel('t')
         ax.set_ylabel('X2')
         plt.legend()
@@ -148,7 +148,16 @@ def main(config, Da=config["PAR"]["Da"]):
     x1 = []
     x2 = []
 
-    Da = np.linspace(0.2,0.5,200)   
+#     Da = np.concatenate((np.linspace(0.2,0.27,10,endpoint=False),
+#                          np.linspace(0.27,0.29,40,endpoint=False),
+#                          np.linspace(0.29,0.32,20,endpoint=False),
+#                          np.linspace(0.32,0.35,20,endpoint=False),
+#                          np.linspace(0.35,0.41,20,endpoint=False),
+#                          np.linspace(0.41,0.43,40,endpoint=False),
+#                          np.linspace(0.43,0.5,10,endpoint=True),
+#                         ))
+    
+    Da = np.linspace(0.2,0.5,200)
 
     count = 0
 
@@ -159,7 +168,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
     for i in range(len(Da)):
         dt = config["DATA"]["TMAX"] / config["DATA"]["L_TRAJECTORIES"]
-        tmax = 200
+        tmax = 300
 
         index = count
 

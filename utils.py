@@ -25,8 +25,8 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
 config["DATA"]["L_TRAJECTORIES"] = 200
-config["DATA"]["N_TRAIN"] = 100
-config["DATA"]["N_VAL"] = 10
+config["DATA"]["N_TRAIN"] = 200
+config["DATA"]["N_VAL"] = 20
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP"] = 20
@@ -40,10 +40,10 @@ config["PAR"]["beta"] = 3
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
 config["TRAINING"]["LEARNING_RATE"] = 5e-2
-config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539
+config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
-config["MODEL"]["NUM_HIDDEN"] = [64]
+config["MODEL"]["NUM_HIDDEN"] = [32, 32]
 
 np.random.seed(1234)
 torch.manual_seed(42)
@@ -132,11 +132,11 @@ class CSTRDataset(torch.utils.data.Dataset):
             if random:
 #                 self.Da = np.random.uniform(0.2,0.5,n_train)   
                 self.Da = np.concatenate((np.random.uniform(0.2,0.29,int(n_train/2)),np.random.uniform(0.29,0.5,int(n_train/2)))) 
-#                 self.Da = np.random.uniform(0.26,0.26,n_train)   
+#                 self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
 #                 self.Da = np.linspace(0.2,0.5,n_train)
                 self.Da = np.concatenate((np.linspace(0.2,0.29,int(n_train/2)),np.linspace(0.29,0.5,int(n_train/2))))
-#                 self.Da = np.linspace(0.26,0.26,n_train)   
+#                 self.Da = np.linspace(0.33,0.33,n_train)   
         
         count = 0
         
@@ -207,8 +207,8 @@ class Snake(nn.Module):
         """Forward pass through activation function."""
         return input_tensor + (1/self.alpha) * (torch.sin(input_tensor * self.alpha)) ** 2
         
-class Network(nn.Module):
-# class Network(jit.ScriptModule):
+# class Network(nn.Module):
+class Network(jit.ScriptModule):
 
     def __init__(self, hidden_cells, minmaxes, tau=torch.tensor([0.05]), beta=3, B=11, Da=0.33, device=None):
         super(Network, self).__init__()
@@ -223,28 +223,28 @@ class Network(nn.Module):
         else:
             self.device = device        
         
-#         self.layers = nn.ModuleList()
+        self.layers = nn.ModuleList()
         
-#         self.layers.append(nn.Linear(3,hidden_cells[0]))
-#         for i in range(len(hidden_cells)-1):
-#             self.layers.append(nn.Linear(hidden_cells[i],hidden_cells[i+1]))
+        self.layers.append(nn.Linear(3,hidden_cells[0]))
+        for i in range(len(hidden_cells)-1):
+            self.layers.append(nn.Linear(hidden_cells[i],hidden_cells[i+1]))
             
-#         self.output_layer = nn.Linear(hidden_cells[-1],2)
+        self.output_layer = nn.Linear(hidden_cells[-1],2)
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
-        self.activation = Snake
+        self.activation = Snake()
         self.sigmoid = nn.Sigmoid()
 
-        self.model = nn.Sequential(
-            nn.Linear(3,32),
-            self.activation(),
-            nn.Linear(32,32),
-            self.activation(),
-#             nn.Linear(16,16),
+#         self.model = nn.Sequential(
+#             nn.Linear(3,32),
 #             self.activation(),
-            nn.Linear(32,2),
-        )
+#             nn.Linear(32,32),
+#             self.activation(),
+# #             nn.Linear(16,16),
+# #             self.activation(),
+#             nn.Linear(32,2),
+#         )
         
 #         self.model = nn.Sequential(
 #             nn.LSTM(2,10,batch_first=True),
@@ -257,35 +257,30 @@ class Network(nn.Module):
 #         self.B = torch.tensor(B)
 #         self.Da = torch.tensor(Da)
 
-#     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    @jit.script_method
+    def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         x1_input = (x1[:,:warmup] - self.x1min) / (self.x1max - self.x1min)
         x2_input = (x2[:,:warmup] - self.x2min) / (self.x2max - self.x2min)
         Da_input = Da.repeat(1,x1_input.size()[1]) / 5
         
-#         print(x1_input)
-#         print(x2_input)
-        
 #         ANN_input = torch.stack((x1_input,x2_input),dim=-1)
         ANN_input = torch.stack((x1_input,x2_input, Da_input),dim=-1)
-        
-#         print(ANN_input)
-        ANN_output = self.model(ANN_input)
-#         print(ANN_output)
-#         print(ANN_output.shape)
+
+#         ANN_output = self.model(ANN_input)
+        for layer in self.layers:
+            ANN_input = layer(ANN_input)
+            ANN_input = self.activation(ANN_input)
+        ANN_output = self.output_layer(ANN_input)
             
 #         x1_outs = (self.sigmoid(ANN_output[:,:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
 #         x2_outs = (self.sigmoid(ANN_output[:,:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
         x1_outs_warmup = x1[:,:warmup] + ANN_output[:,:,0]
         x2_outs_warmup = x2[:,:warmup] + ANN_output[:,:,1]
+        
 #         x1_outs_warmup = (self.sigmoid(ANN_output[:,:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
 #         x2_outs_warmup = (self.sigmoid(ANN_output[:,:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
-        
-#         print(x1_outs_warmup)
-#         print(x2_outs_warmup)
-#         print('warming is: ' + str(x1_outs_warmup.shape[1]))
         
         x1_out = []
         x2_out = []
@@ -299,32 +294,23 @@ class Network(nn.Module):
         for j in range(x1.size()[1]-warmup):
             x1_input = (x1_out[j] - self.x1min) / (self.x1max - self.x1min)
             x2_input = (x2_out[j] - self.x2min) / (self.x2max - self.x2min)
-            
-#             print(x1_input)
-#             print(x2_input)
-#             assert False
+
             
 #             ANN_input = torch.stack((x1_input,x2_input),dim=-1)
             ANN_input = torch.stack((x1_input,x2_input,Da.squeeze(-1)/5),dim=-1)
 
-            ANN_output = self.model(ANN_input)
+#             ANN_output = self.model(ANN_input)
             
-#             print(ANN_output)
-#             print(ANN_output.shape)
-#             for layer in self.layers:
-#                 ANN_input = layer(ANN_input)
-# #                 print(ANN_input.shape)
-#                 ANN_input = self.activation(ANN_input)
-# #                 print(ANN_input.shape)
-                
-#             ANN_output = self.output_layer(ANN_input)
-# #             print(ANN_output.shape)
+            for layer2 in self.layers:
+                ANN_input = layer2(ANN_input)
+                ANN_input = self.activation(ANN_input)
+            ANN_output = self.output_layer(ANN_input)
             
             
 
             
-            x1_integ =  ANN_output[:,0]  + x1_out[-1] # * dt.squeeze()
-            x2_integ =  ANN_output[:,1]  + x2_out[-1] # * dt.squeeze()
+            x1_integ =  ANN_output[:,0]  + x1_out[j] # * dt.squeeze()
+            x2_integ =  ANN_output[:,1]  + x2_out[j] # * dt.squeeze()
 #             x1_integ = (self.sigmoid(ANN_output[:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
 #             x2_integ = (self.sigmoid(ANN_output[:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
 
@@ -341,10 +327,6 @@ class Network(nn.Module):
         else:
             x1_outs = x1_outs_warmup
             x2_outs = x2_outs_warmup
-        
-#         print(x1_outs)
-#         print(x1_outs.shape)
-#         assert False
         
         return x1_outs, x2_outs
     
@@ -367,20 +349,14 @@ class Network(nn.Module):
         return x1_outs, x2_outs
 
     @jit.script_method
-    def forward_backup(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         
         
         x1_inputs = x1.unbind(1)
         x2_inputs = x2.unbind(1)
-        
-#         print(x1.shape)
-#         print(len(x1_inputs))
-#         print(x1_inputs[0].shape)
-#         print(dt.shape)
-#         print(dt.unsqueeze(0).repeat(x1_inputs[0].size()[0],1))
-#         assert False
+        Da_input = Da.squeeze(-1) / 5
 
 #         if torch.any(x1_inputs[0]<0) or torch.any(x2_inputs[0]<0):
 #             assert False, "All first inputs must be available"
@@ -404,32 +380,30 @@ class Network(nn.Module):
             else:
                 x1_input = x1_out[j-1]
                 x2_input = x2_out[j-1]
-                
+            
+            x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
+            x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
+            
 #             print('shapes')
 #             print(Da.squeeze().shape)
 #             print(x1_input.shape)
             
-            ANN_input = torch.stack((x1_input,x2_input/10),dim=-1)
+            ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
 #             ANN_input = torch.stack((x1_input,x2_input/10,Da.squeeze(-1)/10),dim=-1)
             
 #             print('shapes')
 #             print(ANN_input.shape)
             
-            ANN_output = self.model(ANN_input)
+#             ANN_output = self.model(ANN_input)
             
-#             for layer in self.layers:
-#                 ANN_input = layer(ANN_input)
-# #                 print(ANN_input.shape)
-#                 ANN_input = self.activation(ANN_input)
-# #                 print(ANN_input.shape)
+            for layer in self.layers:
+                ANN_input = layer(ANN_input)
+                ANN_input = self.activation(ANN_input)
                 
-#             ANN_output = self.output_layer(ANN_input)
-# #             print(ANN_output.shape)
+            ANN_output = self.output_layer(ANN_input)
             
-#             assert False
-            
-            x1_integ = ANN_output[:,0]  + x1_input # * dt.squeeze()
-            x2_integ = ANN_output[:,1]  + x2_input # * dt.squeeze()
+            x1_integ = x1_input + ANN_output[:,0] # * dt.squeeze()
+            x2_integ = x2_input + ANN_output[:,1] # * dt.squeeze()
 
 #             x1_integ = self.sigmoid(ANN_output[:,0])*1.1
 #             x2_integ = self.sigmoid(ANN_output[:,1])*10
@@ -535,8 +509,8 @@ class my_Model():
             batch_size = x1.size()[0]
             time_length = x1.size()[1]
             
-            if epoch > 1000:
-#                 warmup = int((np.maximum(0,1-(epoch-100)/(1000-500))*(1-self.warmup)+self.warmup) * x1.size()[1])
+            if epoch > 0:
+#                 warmup = int((np.maximum(0,1-(epoch-300)/(1259-300))*(1-self.warmup)+self.warmup) * x1.size()[1])
                 warmup = int(self.warmup * x1.size()[1])
             else:
                 warmup = time_length
@@ -574,7 +548,7 @@ class my_Model():
             sum_loss += loss.detach().cpu().numpy()
             cnt += 1
         
-#         if epoch > 1500:
+#         if epoch > 2560:
 #             self.scheduler_second.step(sum_loss / cnt)
 #             self.lr_epoch.append(epoch)
 #             self.lr_track.append(self.scheduler_second._last_lr)
@@ -600,8 +574,8 @@ class my_Model():
                 batch_size = x1.size()[0]
                 time_length = x1.size()[1]
 
-                if epoch > 1000:
-#                     warmup = int((np.maximum(0,1-(epoch-100)/(1000-500))*(1-self.warmup)+self.warmup) * x1.size()[1])
+                if epoch > 0:
+#                     warmup = int((np.maximum(0,1-(epoch-300)/(1259-300))*(1-self.warmup)+self.warmup) * x1.size()[1])
                     warmup = int(self.warmup * x1.size()[1])
                 else:
                     warmup = time_length
