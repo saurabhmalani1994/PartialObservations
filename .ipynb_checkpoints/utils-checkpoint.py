@@ -25,12 +25,12 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
 config["DATA"]["L_TRAJECTORIES"] = 200
-config["DATA"]["N_TRAIN"] = 200
-config["DATA"]["N_VAL"] = 20
+config["DATA"]["N_TRAIN"] = 50
+config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP"] = 20
-config["DATA"]["Y_SAMPLE"] = 1
+config["DATA"]["Y_SAMPLE"] = 181
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -39,7 +39,7 @@ config["PAR"]["beta"] = 3
 
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
-config["TRAINING"]["LEARNING_RATE"] = 5e-2
+config["TRAINING"]["LEARNING_RATE"] = 1e-3
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
@@ -131,12 +131,12 @@ class CSTRDataset(torch.utils.data.Dataset):
         else:
             if random:
 #                 self.Da = np.random.uniform(0.2,0.5,n_train)   
-                self.Da = np.concatenate((np.random.uniform(0.2,0.29,int(n_train/2)),np.random.uniform(0.29,0.5,int(n_train/2)))) 
-#                 self.Da = np.random.uniform(0.33,0.33,n_train)   
+#                 self.Da = np.concatenate((np.random.uniform(0.2,0.29,int(n_train/2)),np.random.uniform(0.29,0.5,int(n_train/2)))) 
+                self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
 #                 self.Da = np.linspace(0.2,0.5,n_train)
-                self.Da = np.concatenate((np.linspace(0.2,0.29,int(n_train/2)),np.linspace(0.29,0.5,int(n_train/2))))
-#                 self.Da = np.linspace(0.33,0.33,n_train)   
+#                 self.Da = np.concatenate((np.linspace(0.2,0.29,int(n_train/2)),np.linspace(0.29,0.5,int(n_train/2))))
+                self.Da = np.linspace(0.33,0.33,n_train)   
         
         count = 0
         
@@ -263,7 +263,7 @@ class Network(jit.ScriptModule):
         
         x1_input = (x1[:,:warmup] - self.x1min) / (self.x1max - self.x1min)
         x2_input = (x2[:,:warmup] - self.x2min) / (self.x2max - self.x2min)
-        Da_input = Da.repeat(1,x1_input.size()[1]) / 5
+        Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
         
 #         ANN_input = torch.stack((x1_input,x2_input),dim=-1)
         ANN_input = torch.stack((x1_input,x2_input, Da_input),dim=-1)
@@ -316,6 +316,9 @@ class Network(jit.ScriptModule):
 
 #             x1_integ = self.sigmoid(ANN_output[:,0])*1.1
 #             x2_integ = self.sigmoid(ANN_output[:,1])*10
+
+            x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*10)
+            x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*10)
     
             x1_out.append(x1_integ)
             x2_out.append(x2_integ)
@@ -356,30 +359,44 @@ class Network(jit.ScriptModule):
         
         x1_inputs = x1.unbind(1)
         x2_inputs = x2.unbind(1)
-        Da_input = Da.squeeze(-1) / 5
+        Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
 
-#         if torch.any(x1_inputs[0]<0) or torch.any(x2_inputs[0]<0):
-#             assert False, "All first inputs must be available"
+        if torch.any(x1_inputs[0]<0) or torch.any(x2_inputs[0]<0):
+            assert False, "All first inputs must be available"
         
         x1_out = []
         x2_out = []
         
-#         x1_out.append(x1_inputs[0])
-#         x2_out.append(x2_inputs[0])
+        x1_out.append(x1_inputs[0])
+        x2_out.append(x2_inputs[0])
         
         for j in range(len(x1_inputs)):
 #             print('is it there?')
 #             print(torch.sum((x1_inputs[j]>0)*1))
 #             print(torch.sum((x1_inputs[j]<0)*1))
-            if j <= warmup:
-#                 x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
-#                 x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
-                x1_input = x1_inputs[j]
-                x2_input = x2_inputs[j]
+
+#             print('===========')
+#             print(x1_inputs[j].item())
+#             print(x2_inputs[j].item())
+#             print(x1_out[j].item())
+#             print(x2_out[j].item())
+            
+            if j < warmup:
+                x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
+                x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
+#                 x1_input = x1_inputs[j]
+#                 x2_input = x2_inputs[j]
         
             else:
-                x1_input = x1_out[j-1]
-                x2_input = x2_out[j-1]
+                x1_input = x1_out[j]
+                x2_input = x2_out[j]
+            
+#             print('--------------')
+#             print(x1_input.item())
+#             print(x2_input.item())
+            
+#             if j > 5:
+#                 assert False
             
             x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
             x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
@@ -404,6 +421,9 @@ class Network(jit.ScriptModule):
             
             x1_integ = x1_input + ANN_output[:,0] # * dt.squeeze()
             x2_integ = x2_input + ANN_output[:,1] # * dt.squeeze()
+            
+            x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*1000)
+            x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*1000)
 
 #             x1_integ = self.sigmoid(ANN_output[:,0])*1.1
 #             x2_integ = self.sigmoid(ANN_output[:,1])*10
@@ -411,8 +431,8 @@ class Network(jit.ScriptModule):
             x1_out.append(x1_integ)
             x2_out.append(x2_integ)
             
-        x1_outs = torch.stack(x1_out,dim=1)
-        x2_outs = torch.stack(x2_out,dim=1)
+        x1_outs = torch.stack(x1_out[1:],dim=1)
+        x2_outs = torch.stack(x2_out[1:],dim=1)
         
         return x1_outs, x2_outs
 
@@ -456,8 +476,8 @@ class my_Model():
         self.lr_epoch = []
         self.lr_track = []
 
-#         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-#             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
 
 #         self.scheduler_second = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
@@ -469,7 +489,9 @@ class my_Model():
 #                                           warmup_steps=0,
 #                                           gamma=1.0)
         
-        self.warmup = 1.0
+        self.warmup = 0.8
+        
+        self.autoreg_prop = 0
     
 #         self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer,
 #                                                   first_cycle_steps=20,
@@ -480,11 +502,11 @@ class my_Model():
 #                                                   gamma=1.0)
 
 
-        self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * config["TRAINING"]["EPOCHS"])
+        self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-200))
 
-        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.total_steps,
-                                                            final_div_factor=1e2,
-                                                            )
+#         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.total_steps,
+#                                                             final_div_factor=1e2,
+#                                                             )
 #         self.scheduler2 = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=learning_rate/10, total_steps=total_steps,
 #                                                             final_div_factor=1e2,
 #                                                             )
@@ -497,33 +519,98 @@ class my_Model():
         for (x1, x1out, x2, x2out, dt, Da) in self.dataloader_train:
             self.optimizer.zero_grad()
             
-#             if epoch == 1000:
-#                 self.optimizer = torch.optim.AdamW(
-#                             self.net.parameters(), lr=self.lr, amsgrad=True)
+            if epoch == 200:
+                self.optimizer = torch.optim.AdamW(
+                            self.net.parameters(), lr=self.lr/2, amsgrad=True)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-#             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-#                 self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.total_steps,
-#                                                             final_div_factor=1e2,
-#                                                             )
+#                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-3, total_steps=self.total_steps,
+                                                            final_div_factor=1e2,
+                                                            )
             
             batch_size = x1.size()[0]
             time_length = x1.size()[1]
             
-            if epoch > 0:
-#                 warmup = int((np.maximum(0,1-(epoch-300)/(1259-300))*(1-self.warmup)+self.warmup) * x1.size()[1])
+            indices = np.random.permutation(batch_size)
+            autoreg_indices = indices[:int(batch_size*self.autoreg_prop)]
+            teacher_forcing_indices = indices[int(batch_size*self.autoreg_prop):]
+
+            
+            if epoch > 200:
+#                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
                 warmup = int(self.warmup * x1.size()[1])
             else:
                 warmup = time_length
             
-            x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), dt.to(self.device), Da.to(self.device), warmup)
+            # Teacher Forcing
+            x1out_hat, x2out_hat = self.net(x1[teacher_forcing_indices,:].to(self.device), 
+                                            x2[teacher_forcing_indices,:].to(self.device), 
+                                            dt[teacher_forcing_indices,:].to(self.device), 
+                                            Da[teacher_forcing_indices,:].to(self.device), time_length)
 #             loss = self.criterion(x2out.to(self.device)[x2out>0], x2out_hat[x2out>0])
-#             loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0]) * self.y_loss_mult
+#             loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0])# * self.y_loss_mult
 
-            loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
+#             loss_x2 = self.criterion(
+#                     x2out.to(self.device),
+#                     torch.where(x2out.to(self.device)>0, x2out_hat, x2out.to(self.device))
+#                     ) / 2
+#             loss_x1 = self.criterion(
+#                     x1out.to(self.device),
+#                     torch.where(x1out.to(self.device)>0, x1out_hat, x1out.to(self.device))
+#                     ) * self.y_loss_mult / 2
+
+            loss = self.criterion(
+                    torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out[teacher_forcing_indices,:].to(self.device), 0.),
+                    torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out_hat, 0.)
+                    ) / 2
+            loss += self.criterion(
+                    torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out[teacher_forcing_indices,:].to(self.device), 0.),
+                    torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out_hat, 0.)
+                    ) * self.y_loss_mult / 2
+#             print('my losses')
+#             print(torch.where(x1out.to(self.device)>0, x1out.to(self.device), 0.)[0,:20])
+#             print(torch.where(x1out.to(self.device)>0, x1out_hat, 0.)[0,:20])
+#             print()
+#             assert(False)
+
+            ## Auto regressive ##
+#             x1out_hat, x2out_hat = self.net(x1[autoreg_indices,:].to(self.device), 
+#                                             x2[autoreg_indices,:].to(self.device), 
+#                                             dt[autoreg_indices,:].to(self.device), 
+#                                             Da[autoreg_indices,:].to(self.device), warmup)
+        
+#             loss += self.criterion(
+#                     torch.where(x2out[autoreg_indices,:].to(self.device)>0, x2out[autoreg_indices,:].to(self.device), 0.),
+#                     torch.where(x2out[autoreg_indices,:].to(self.device)>0, x2out_hat, 0.)
+#                     ) / 20
+#             loss += self.criterion(
+#                     torch.where(x1out[autoreg_indices,:].to(self.device)>0, x1out[autoreg_indices,:].to(self.device), 0.),
+#                     torch.where(x1out[autoreg_indices,:].to(self.device)>0, x1out_hat, 0.)
+#                     ) * self.y_loss_mult / 20
+
+            x1out_hat, x2out_hat = self.net(x1[teacher_forcing_indices,:].to(self.device), 
+                                            x2[teacher_forcing_indices,:].to(self.device), 
+                                            dt[teacher_forcing_indices,:].to(self.device), 
+                                            Da[teacher_forcing_indices,:].to(self.device), warmup)
+    
+            loss += self.criterion(
+                    torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out[teacher_forcing_indices,:].to(self.device), 0.),
+                    torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out_hat, 0.)
+                    ) / 20
+            loss += self.criterion(
+                    torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out[teacher_forcing_indices,:].to(self.device), 0.),
+                    torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out_hat, 0.)
+                    ) * self.y_loss_mult / 20
+            
+#             loss = loss_x1 + loss_x2
+            
+#             loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
 #             loss = self.criterion(x2out.to(self.device), x2out_hat)
 #             loss += self.criterion(x1out.to(self.device), x1out_hat) * self.y_loss_mult
 #             loss = loss/batch_size
-
+            
+#             loss = loss / 2
+            
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1)
             self.optimizer.step()
@@ -531,11 +618,12 @@ class my_Model():
 
             
             # Use for 1-Cycle
-#             if epoch < 1000:
-            self.scheduler.step()
-            self.lr_epoch.append(epoch + cnt / iters)
-            self.lr_track.append(self.scheduler.get_last_lr())
+            if epoch >= 200:
+                self.scheduler.step()
+                self.lr_epoch.append(epoch + cnt / iters)
+                self.lr_track.append(self.scheduler.get_last_lr())
             
+    #        Use for Cosine Annealing
 #             self.scheduler.step(epoch + cnt / iters)
 #             self.lr_epoch.append(epoch + cnt / iters)
 #             self.lr_track.append(self.scheduler.get_lr())
@@ -554,10 +642,10 @@ class my_Model():
 #             self.lr_track.append(self.scheduler_second._last_lr)
         
 #         Use for lr reduce on plateau
-#         if epoch >= 1000:# or epoch <= 1:
-#         self.scheduler.step(sum_loss / cnt)
-#         self.lr_epoch.append(epoch)
-#         self.lr_track.append(self.scheduler._last_lr)
+        if epoch < 200:# or epoch <= 1:
+            self.scheduler.step(sum_loss / cnt)
+            self.lr_epoch.append(epoch)
+            self.lr_track.append(self.scheduler._last_lr)
 
         
         self.train_loss.append(sum_loss/cnt)
@@ -574,16 +662,28 @@ class my_Model():
                 batch_size = x1.size()[0]
                 time_length = x1.size()[1]
 
-                if epoch > 0:
-#                     warmup = int((np.maximum(0,1-(epoch-300)/(1259-300))*(1-self.warmup)+self.warmup) * x1.size()[1])
+                if epoch > 200:
+#                     warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
                     warmup = int(self.warmup * x1.size()[1])
                 else:
                     warmup = time_length
 
                 x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), dt.to(self.device), Da.to(self.device), warmup)
 #                 loss = self.criterion(x2out.to(self.device)[x2out>0], x2out_hat[x2out>0])
-#                 loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0]) * self.y_loss_mult
-                loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
+#                 loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0])# * self.y_loss_mult
+
+                loss_x2 = self.criterion(
+                        torch.where(x2out.to(self.device)>0, x2out.to(self.device), 0.),
+                        torch.where(x2out.to(self.device)>0, x2out_hat, 0.)
+                        ) / 2
+                loss_x1 = self.criterion(
+                        torch.where(x1out.to(self.device)>0, x1out.to(self.device), 0.),
+                        torch.where(x1out.to(self.device)>0, x1out_hat, 0.)
+                        ) * self.y_loss_mult / 2
+        
+                loss = loss_x1 + loss_x2
+
+#                 loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
 #                 loss += self.criterion(x1out.to(self.device), x1out_hat) * self.y_loss_mult
 #                 loss = loss/batch_size
                 
