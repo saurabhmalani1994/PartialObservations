@@ -53,8 +53,8 @@ def main(config, Da=config["PAR"]["Da"]):
 
     plt.savefig('Figures/trainingloss_learningrate.png')
     
-    Da_list = [0.33] * 10
-#     Da_list = [0.2, 0.25, 0.28, 0.3, 0.32, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]*10
+#     Da_list = [0.21] * 10
+    Da_list = [0.2, 0.25, 0.28, 0.3, 0.32, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
 #     Da_list = [0.3, 0.33, 0.36]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
     
@@ -147,7 +147,7 @@ def main(config, Da=config["PAR"]["Da"]):
         index += 1
 
 
-    assert(False)
+#     assert(False)
 
     x1 = []
     x2 = []

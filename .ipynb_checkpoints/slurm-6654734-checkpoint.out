@@ -1,0 +1,108 @@
+  0%|          | 0/200 [00:00<?, ?it/s]/home/smalani/PartialObservations/utils.py:65: RuntimeWarning: overflow encountered in exp
+  dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+/home/smalani/PartialObservations/utils.py:66: RuntimeWarning: overflow encountered in exp
+  dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+/home/smalani/PartialObservations/utils.py:65: RuntimeWarning: invalid value encountered in double_scalars
+  dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+/home/smalani/PartialObservations/utils.py:66: RuntimeWarning: invalid value encountered in double_scalars
+  dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+  7%|▋         | 14/200 [00:00<00:01, 132.06it/s] 14%|█▍        | 28/200 [00:00<00:01, 116.27it/s] 20%|██        | 40/200 [00:00<00:01, 112.48it/s] 26%|██▌       | 52/200 [00:00<00:01, 100.93it/s] 32%|███▏      | 63/200 [00:00<00:01, 86.22it/s]  36%|███▌      | 72/200 [00:00<00:01, 73.89it/s] 40%|████      | 80/200 [00:00<00:01, 70.61it/s] 44%|████▍     | 88/200 [00:01<00:01, 66.35it/s] 48%|████▊     | 95/200 [00:01<00:01, 65.43it/s] 51%|█████     | 102/200 [00:01<00:01, 61.42it/s] 55%|█████▍    | 109/200 [00:01<00:01, 58.01it/s] 57%|█████▊    | 115/200 [00:01<00:01, 56.68it/s] 60%|██████    | 121/200 [00:01<00:01, 55.30it/s] 64%|██████▎   | 127/200 [00:01<00:01, 50.62it/s] 66%|██████▋   | 133/200 [00:01<00:01, 51.98it/s] 70%|███████   | 140/200 [00:02<00:01, 54.76it/s] 73%|███████▎  | 146/200 [00:02<00:00, 55.72it/s] 76%|███████▌  | 152/200 [00:02<00:00, 56.00it/s] 79%|███████▉  | 158/200 [00:02<00:00, 56.17it/s] 82%|████████▎ | 165/200 [00:02<00:00, 58.03it/s] 86%|████████▌ | 171/200 [00:02<00:00, 57.39it/s] 88%|████████▊ | 177/200 [00:02<00:00, 57.07it/s] 92%|█████████▏| 183/200 [00:02<00:00, 57.79it/s] 94%|█████████▍| 189/200 [00:02<00:00, 56.00it/s] 98%|█████████▊| 195/200 [00:03<00:00, 56.56it/s]100%|██████████| 200/200 [00:03<00:00, 64.21it/s]
+  0%|          | 0/100 [00:00<?, ?it/s]  7%|▋         | 7/100 [00:00<00:01, 62.60it/s] 14%|█▍        | 14/100 [00:00<00:01, 55.10it/s] 21%|██        | 21/100 [00:00<00:01, 58.00it/s] 28%|██▊       | 28/100 [00:00<00:01, 59.69it/s] 36%|███▌      | 36/100 [00:00<00:00, 64.93it/s] 44%|████▍     | 44/100 [00:00<00:00, 66.82it/s] 52%|█████▏    | 52/100 [00:00<00:00, 65.50it/s] 59%|█████▉    | 59/100 [00:00<00:00, 63.62it/s] 66%|██████▌   | 66/100 [00:01<00:00, 64.40it/s] 74%|███████▍  | 74/100 [00:01<00:00, 65.84it/s] 83%|████████▎ | 83/100 [00:01<00:00, 71.96it/s] 91%|█████████ | 91/100 [00:01<00:00, 71.61it/s] 99%|█████████▉| 99/100 [00:01<00:00, 66.74it/s]100%|██████████| 100/100 [00:01<00:00, 65.19it/s]
+  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:00<00:00, 58.79it/s]
+Train/Loss: 0.00e+00  Val/Loss: 0.00e+00:   0%|          | 0/2000 [00:00<?, ?it/s]Using dt of 0.050000000000000044
+Using dt of 0.050000000000000044
+Using dt of 0.050000000000000044
+Network(
+  (layers): RecursiveScriptModule(
+    original_name=ModuleList
+    (0): RecursiveScriptModule(original_name=Linear)
+    (1): RecursiveScriptModule(original_name=Linear)
+  )
+  (output_layer): RecursiveScriptModule(original_name=Linear)
+  (activation): RecursiveScriptModule(original_name=Snake)
+  (sigmoid): RecursiveScriptModule(original_name=Sigmoid)
+)
+Using: cuda
+Trainable parameters: 4675
+Train/Loss: 0.00e+00  Val/Loss: 0.00e+00:   0%|          | 0/2000 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "train_model.py", line 105, in <module>
+    main(config)
+  File "train_model.py", line 95, in main
+    train_loss = model.train(epoch)
+  File "/home/smalani/PartialObservations/utils.py", line 556, in train
+    x1out_hat, x2out_hat = self.net(x1[teacher_forcing_indices,:].to(self.device), 
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/modules/module.py", line 889, in _call_impl
+    result = self.forward(*input, **kwargs)
+RuntimeError: The following operation failed in the TorchScript interpreter.
+Traceback of TorchScript (most recent call last):
+  File "/home/smalani/PartialObservations/utils.py", line 276, in forward
+    #         ANN_output = self.model(ANN_input)
+        for layer in self.layers:
+            ANN_input = layer(ANN_input)
+                        ~~~~~ <--- HERE
+            ANN_input = self.activation(ANN_input)
+        ANN_output = self.output_layer(ANN_input)
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/modules/linear.py", line 94, in forward
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(input, self.weight, self.bias)
+               ~~~~~~~~ <--- HERE
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/functional.py", line 1753, in linear
+    if has_torch_function_variadic(input, weight):
+        return handle_torch_function(linear, (input, weight), input, weight, bias=bias)
+    return torch._C._nn.linear(input, weight, bias)
+           ~~~~~~~~~~~~~~~~~~~ <--- HERE
+RuntimeError: mat1 dim 1 must match mat2 dim 0
+
+  0%|          | 0/1 [00:00<?, ?it/s]/home/smalani/PartialObservations/utils.py:65: RuntimeWarning: overflow encountered in exp
+  dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+/home/smalani/PartialObservations/utils.py:66: RuntimeWarning: overflow encountered in exp
+  dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+/home/smalani/PartialObservations/utils.py:65: RuntimeWarning: invalid value encountered in double_scalars
+  dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+/home/smalani/PartialObservations/utils.py:66: RuntimeWarning: invalid value encountered in double_scalars
+  dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+100%|██████████| 1/1 [00:00<00:00, 77.95it/s]
+0.9716867095156675
+0.308382989458118
+4.653116579342228
+0.4920489014661357
+Using dt of 0.050000000000000044
+data/model__hidden_layers_2_64.net
+Network(
+  (layers): RecursiveScriptModule(
+    original_name=ModuleList
+    (0): RecursiveScriptModule(original_name=Linear)
+    (1): RecursiveScriptModule(original_name=Linear)
+  )
+  (output_layer): RecursiveScriptModule(original_name=Linear)
+  (activation): RecursiveScriptModule(original_name=Snake)
+  (sigmoid): RecursiveScriptModule(original_name=Sigmoid)
+)
+Traceback (most recent call last):
+  File "make_plots.py", line 298, in <module>
+    main(config)
+  File "make_plots.py", line 124, in main
+    x1_out, x2_out = network(x1_in,x2_in,warmup=0,dt=torch.tensor(dataset_test.delta_t).to(network.device),Da=torch.tensor(dataset_test.Da).unsqueeze(0).to(network.device))
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/modules/module.py", line 889, in _call_impl
+    result = self.forward(*input, **kwargs)
+RuntimeError: The following operation failed in the TorchScript interpreter.
+Traceback of TorchScript (most recent call last):
+  File "/home/smalani/PartialObservations/utils.py", line 276, in forward
+    #         ANN_output = self.model(ANN_input)
+        for layer in self.layers:
+            ANN_input = layer(ANN_input)
+                        ~~~~~ <--- HERE
+            ANN_input = self.activation(ANN_input)
+        ANN_output = self.output_layer(ANN_input)
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/modules/linear.py", line 94, in forward
+    def forward(self, input: Tensor) -> Tensor:
+        return F.linear(input, self.weight, self.bias)
+               ~~~~~~~~ <--- HERE
+  File "/home/smalani/.conda/envs/torch-env/lib/python3.8/site-packages/torch/nn/functional.py", line 1753, in linear
+    if has_torch_function_variadic(input, weight):
+        return handle_torch_function(linear, (input, weight), input, weight, bias=bias)
+    return torch._C._nn.linear(input, weight, bias)
+           ~~~~~~~~~~~~~~~~~~~ <--- HERE
+RuntimeError: mat1 dim 1 must match mat2 dim 0
+

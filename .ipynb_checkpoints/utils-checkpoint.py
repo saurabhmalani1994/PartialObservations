@@ -25,12 +25,12 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
 config["DATA"]["L_TRAJECTORIES"] = 200
-config["DATA"]["N_TRAIN"] = 50
-config["DATA"]["N_VAL"] = 10
+config["DATA"]["N_TRAIN"] = 200
+config["DATA"]["N_VAL"] = 100
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP"] = 20
-config["DATA"]["Y_SAMPLE"] = 181
+config["DATA"]["Y_SAMPLE"] = 1
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -39,11 +39,11 @@ config["PAR"]["beta"] = 3
 
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
-config["TRAINING"]["LEARNING_RATE"] = 1e-3
+config["TRAINING"]["LEARNING_RATE"] = 5e-3
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
-config["MODEL"]["NUM_HIDDEN"] = [32, 32]
+config["MODEL"]["NUM_HIDDEN"] = [64, 64]
 
 np.random.seed(1234)
 torch.manual_seed(42)
@@ -130,13 +130,13 @@ class CSTRDataset(torch.utils.data.Dataset):
             self.Da = np.array([Da])
         else:
             if random:
-#                 self.Da = np.random.uniform(0.2,0.5,n_train)   
-#                 self.Da = np.concatenate((np.random.uniform(0.2,0.29,int(n_train/2)),np.random.uniform(0.29,0.5,int(n_train/2)))) 
-                self.Da = np.random.uniform(0.33,0.33,n_train)   
+                self.Da = np.random.uniform(0.2,0.5,n_train)   
+#                 self.Da = np.concatenate((np.random.uniform(0.2,0.25,int(n_train/2)),np.random.uniform(0.25,0.5,int(n_train/2)))) 
+#                 self.Da = np.random.uniform(0.21,0.21,n_train)   
             else:
-#                 self.Da = np.linspace(0.2,0.5,n_train)
-#                 self.Da = np.concatenate((np.linspace(0.2,0.29,int(n_train/2)),np.linspace(0.29,0.5,int(n_train/2))))
-                self.Da = np.linspace(0.33,0.33,n_train)   
+                self.Da = np.linspace(0.2,0.5,n_train)
+#                 self.Da = np.concatenate((np.linspace(0.2,0.25,int(n_train/2)),np.linspace(0.25,0.5,int(n_train/2))))
+#                 self.Da = np.linspace(0.21,0.21,n_train)   
         
         count = 0
         
@@ -234,6 +234,8 @@ class Network(jit.ScriptModule):
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
         self.activation = Snake()
+#         self.activation = nn.SiLU()
+        
         self.sigmoid = nn.Sigmoid()
 
 #         self.model = nn.Sequential(
@@ -258,12 +260,13 @@ class Network(jit.ScriptModule):
 #         self.Da = torch.tensor(Da)
 
     @jit.script_method
-    def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         x1_input = (x1[:,:warmup] - self.x1min) / (self.x1max - self.x1min)
         x2_input = (x2[:,:warmup] - self.x2min) / (self.x2max - self.x2min)
-        Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+#         Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+        Da_input = Da.repeat(1,x1_input.size()[1])
         
 #         ANN_input = torch.stack((x1_input,x2_input),dim=-1)
         ANN_input = torch.stack((x1_input,x2_input, Da_input),dim=-1)
@@ -289,7 +292,8 @@ class Network(jit.ScriptModule):
             x1_out.append(x1[:,warmup])
             x2_out.append(x2[:,warmup])
             
-            
+#         Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
+        Da_input = Da.squeeze(-1)
         
         for j in range(x1.size()[1]-warmup):
             x1_input = (x1_out[j] - self.x1min) / (self.x1max - self.x1min)
@@ -297,7 +301,11 @@ class Network(jit.ScriptModule):
 
             
 #             ANN_input = torch.stack((x1_input,x2_input),dim=-1)
-            ANN_input = torch.stack((x1_input,x2_input,Da.squeeze(-1)/5),dim=-1)
+#             print(x1_input.shape)
+#             print(x2_input.shape)
+#             print(Da_input.shape)
+#             print(Da_input.squeeze(-1).shape)
+            ANN_input = torch.stack((x1_input,x2_input,Da_input),dim=-1)
 
 #             ANN_output = self.model(ANN_input)
             
@@ -317,8 +325,8 @@ class Network(jit.ScriptModule):
 #             x1_integ = self.sigmoid(ANN_output[:,0])*1.1
 #             x2_integ = self.sigmoid(ANN_output[:,1])*10
 
-            x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*10)
-            x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*10)
+            x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*1000)
+            x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*1000)
     
             x1_out.append(x1_integ)
             x2_out.append(x2_integ)
@@ -352,7 +360,7 @@ class Network(jit.ScriptModule):
         return x1_outs, x2_outs
 
     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         
@@ -466,7 +474,7 @@ class my_Model():
         self.lr = learning_rate
         
         self.optimizer = torch.optim.AdamW(
-            self.net.parameters(), lr=self.lr, amsgrad=True)
+            self.net.parameters(), lr=self.lr, amsgrad=True)#, weight_decay=0.1)
 
         self.criterion = torch.nn.MSELoss(reduction='mean').to(self.device)
 
@@ -490,6 +498,8 @@ class my_Model():
 #                                           gamma=1.0)
         
         self.warmup = 0.8
+        
+        self.alpha = 0.8
         
         self.autoreg_prop = 0
     
@@ -521,7 +531,7 @@ class my_Model():
             
             if epoch == 200:
                 self.optimizer = torch.optim.AdamW(
-                            self.net.parameters(), lr=self.lr/2, amsgrad=True)
+                            self.net.parameters(), lr=self.lr, amsgrad=True)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
                 self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-3, total_steps=self.total_steps,
@@ -559,11 +569,11 @@ class my_Model():
 #                     torch.where(x1out.to(self.device)>0, x1out_hat, x1out.to(self.device))
 #                     ) * self.y_loss_mult / 2
 
-            loss = self.criterion(
+            loss_tf = self.criterion(
                     torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out[teacher_forcing_indices,:].to(self.device), 0.),
                     torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out_hat, 0.)
                     ) / 2
-            loss += self.criterion(
+            loss_tf += self.criterion(
                     torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out[teacher_forcing_indices,:].to(self.device), 0.),
                     torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out_hat, 0.)
                     ) * self.y_loss_mult / 2
@@ -593,16 +603,16 @@ class my_Model():
                                             dt[teacher_forcing_indices,:].to(self.device), 
                                             Da[teacher_forcing_indices,:].to(self.device), warmup)
     
-            loss += self.criterion(
+            loss_autoreg = self.criterion(
                     torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out[teacher_forcing_indices,:].to(self.device), 0.),
                     torch.where(x2out[teacher_forcing_indices,:].to(self.device)>0, x2out_hat, 0.)
-                    ) / 20
-            loss += self.criterion(
+                    ) / 2
+            loss_autoreg += self.criterion(
                     torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out[teacher_forcing_indices,:].to(self.device), 0.),
                     torch.where(x1out[teacher_forcing_indices,:].to(self.device)>0, x1out_hat, 0.)
-                    ) * self.y_loss_mult / 20
+                    ) * self.y_loss_mult / 2
             
-#             loss = loss_x1 + loss_x2
+            loss = torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha)
             
 #             loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
 #             loss = self.criterion(x2out.to(self.device), x2out_hat)
@@ -633,7 +643,7 @@ class my_Model():
 #                 self.lr_epoch.append(epoch + cnt / iters)
 #                 self.lr_track.append(self.scheduler_first.get_lr())
             
-            sum_loss += loss.detach().cpu().numpy()
+            sum_loss += torch.exp(loss).detach().cpu().numpy()
             cnt += 1
         
 #         if epoch > 2560:
@@ -681,13 +691,13 @@ class my_Model():
                         torch.where(x1out.to(self.device)>0, x1out_hat, 0.)
                         ) * self.y_loss_mult / 2
         
-                loss = loss_x1 + loss_x2
+                loss = torch.log(loss_x1 + loss_x2)
 
 #                 loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
 #                 loss += self.criterion(x1out.to(self.device), x1out_hat) * self.y_loss_mult
 #                 loss = loss/batch_size
                 
-                sum_loss += loss.detach().cpu().numpy()
+                sum_loss += torch.exp(loss).detach().cpu().numpy()
                 cnt += 1
 
 
