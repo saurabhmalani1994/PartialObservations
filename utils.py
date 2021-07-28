@@ -26,11 +26,11 @@ config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
 config["DATA"]["L_TRAJECTORIES"] = 200
 config["DATA"]["N_TRAIN"] = 200
-config["DATA"]["N_VAL"] = 100
+config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP"] = 20
-config["DATA"]["Y_SAMPLE"] = 1
+config["DATA"]["Y_SAMPLE"] = 20
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -43,7 +43,7 @@ config["TRAINING"]["LEARNING_RATE"] = 5e-3
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
-config["MODEL"]["NUM_HIDDEN"] = [64, 64]
+config["MODEL"]["NUM_HIDDEN"] = [32, 32]
 
 np.random.seed(1234)
 torch.manual_seed(42)
@@ -131,12 +131,12 @@ class CSTRDataset(torch.utils.data.Dataset):
         else:
             if random:
                 self.Da = np.random.uniform(0.2,0.5,n_train)   
-#                 self.Da = np.concatenate((np.random.uniform(0.2,0.25,int(n_train/2)),np.random.uniform(0.25,0.5,int(n_train/2)))) 
-#                 self.Da = np.random.uniform(0.21,0.21,n_train)   
+#                 self.Da = np.concatenate((np.random.uniform(0.2,0.25,int(n_train/2)),np.random.uniform(0.45,0.5,int(n_train/2)))) 
+#                 self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
-                self.Da = np.linspace(0.2,0.5,n_train)
-#                 self.Da = np.concatenate((np.linspace(0.2,0.25,int(n_train/2)),np.linspace(0.25,0.5,int(n_train/2))))
-#                 self.Da = np.linspace(0.21,0.21,n_train)   
+#                 self.Da = np.linspace(0.2,0.5,n_train)
+                self.Da = np.concatenate((np.linspace(0.2,0.25,int(n_train/2)),np.linspace(0.25,0.5,int(n_train/2))))
+#                 self.Da = np.linspace(0.33,0.33,n_train)   
         
         count = 0
         
@@ -260,13 +260,13 @@ class Network(jit.ScriptModule):
 #         self.Da = torch.tensor(Da)
 
     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         x1_input = (x1[:,:warmup] - self.x1min) / (self.x1max - self.x1min)
         x2_input = (x2[:,:warmup] - self.x2min) / (self.x2max - self.x2min)
-#         Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
-        Da_input = Da.repeat(1,x1_input.size()[1])
+        Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+#         Da_input = Da.repeat(1,x1_input.size()[1])
         
 #         ANN_input = torch.stack((x1_input,x2_input),dim=-1)
         ANN_input = torch.stack((x1_input,x2_input, Da_input),dim=-1)
@@ -292,8 +292,8 @@ class Network(jit.ScriptModule):
             x1_out.append(x1[:,warmup])
             x2_out.append(x2[:,warmup])
             
-#         Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
-        Da_input = Da.squeeze(-1)
+        Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
+#         Da_input = Da.squeeze(-1)
         
         for j in range(x1.size()[1]-warmup):
             x1_input = (x1_out[j] - self.x1min) / (self.x1max - self.x1min)
@@ -360,7 +360,7 @@ class Network(jit.ScriptModule):
         return x1_outs, x2_outs
 
     @jit.script_method
-    def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         
         
@@ -534,7 +534,7 @@ class my_Model():
                             self.net.parameters(), lr=self.lr, amsgrad=True)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-3, total_steps=self.total_steps,
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=5e-3, total_steps=self.total_steps,
                                                             final_div_factor=1e2,
                                                             )
             

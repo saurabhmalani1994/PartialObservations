@@ -53,7 +53,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
     plt.savefig('Figures/trainingloss_learningrate.png')
     
-#     Da_list = [0.21] * 10
+#     Da_list = [0.33] * 10
     Da_list = [0.2, 0.25, 0.28, 0.3, 0.32, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
 #     Da_list = [0.3, 0.33, 0.36]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
@@ -112,6 +112,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
         print(network)
         network.to(device)
+
         
         network.double()
 
@@ -125,28 +126,35 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.tt[1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)')
-        ax.plot(dataset_test.tt,dataset_test.x1_data[0],'k',label='true trajectory')
-        ax.plot(dataset_test.tt[1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted')
-        ax.set_xlabel('t')
-        ax.set_ylabel('X1')
-        plt.legend()
-        plt.title('X1 graph for Da: ' + str(dataset_test.Da))
-        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '.png',format='png')
+        ax.plot(dataset_test.tt[1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.tt,dataset_test.x1_data[0],'k',label='true trajectory',linewidth=3)
+        ax.plot(dataset_test.tt[1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.set_xlabel(r'$t$',fontsize=40)
+        ax.set_ylabel(r'$X_1$',fontsize=40)
+        plt.yticks(fontsize=25)
+        plt.xticks(fontsize=25)
+        plt.legend(fontsize=20,loc='upper left')
+        plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
+        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da[0]) + 'index_' + str(index) + '.png',format='png')
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.tt[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x-',label='true')
-        ax.plot(dataset_test.tt[1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted')
-        ax.set_xlabel('t')
-        ax.set_ylabel('X2')
-        plt.legend()
-        plt.title('X2 graph for Da: ' + str(dataset_test.Da))
+        ax.plot(dataset_test.tt[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.tt[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'k',label='true trajectory',linewidth=3)
+        ax.plot(dataset_test.tt[1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.set_xlabel(r'$t$',fontsize=40)
+        ax.set_ylabel(r'$X_2$',fontsize=40)
+        plt.yticks(fontsize=25)
+        plt.xticks(fontsize=25)
+        plt.legend(fontsize=20,loc='upper left')
+        plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
         fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '.png',format='png')
         
         index += 1
+    
 
-
+    
+    
 #     assert(False)
 
     x1 = []
@@ -222,7 +230,7 @@ def main(config, Da=config["PAR"]["Da"]):
     max_arr_x1 = []
     min_arr_x1 = []
     
-#     assert False
+    
 
     for i in range(len(Da)):
         x1_in = torch.tensor(x1[i][0], dtype=torch.float32).unsqueeze(0).unsqueeze(-1).to(device)
