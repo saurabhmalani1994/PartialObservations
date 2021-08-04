@@ -24,13 +24,14 @@ import torch.jit as jit
 config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
-config["DATA"]["L_TRAJECTORIES"] = 200
+config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.05
 config["DATA"]["N_TRAIN"] = 200
 config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
-config["DATA"]["SKIP"] = 20
-config["DATA"]["Y_SAMPLE"] = 1
+config["DATA"]["SKIP_TIME"] = 1
+config["DATA"]["X1_SAMPLE_TIME"] = 1
+config["DATA"]["X2_SAMPLE_TIME"] = 0.3
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -67,18 +68,6 @@ def f_cstr(t, y, Da, beta, B):
 
     return [dx1dt, dx2dt]
 
-# def Jac_cstr(t, y, Da, beta, B):
-#     """Time derivatives of the CSTR model."""
-#     x1, x2 = y
-
-#     dx1dotdx1 = -1 - Da * np.exp(x2)
-#     dx1dotdx2 = Da * (1-x1) * np.exp(x2)
-    
-#     dx2dotdx1 = - B * Da * np.exp(x2)
-#     dx2dotdx2 = -1 - beta + B * Da * (1-x1) * np.exp(x2)
-
-#     return [[dx1dotdx1, dx1dotdx2], [dx2dotdx1, dx2dotdx2]]
-
 
 def get_pars(Da: np.float=0.085, B: np.float=22, beta: np.float=3):
 #     B = 22.0
@@ -89,14 +78,14 @@ def get_pars(Da: np.float=0.085, B: np.float=22, beta: np.float=3):
     return pars
 
 
-def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=22, beta=3):
+def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=22, beta=3, teval=np.linspace(0, 20, 2001)):
 
     pars = get_pars(Da,B,beta)
     if y0 is None:
         y0 = cstr_initial_conditions()
 
-    sol = solve_ivp(f_cstr, y0=y0, t_span=[0, tmax],
-                    t_eval=np.linspace(tmin, tmax, T+1), args=pars,
+    sol = solve_ivp(f_cstr, y0=y0, t_span=[tmin, tmax],
+                    t_eval=teval, args=pars,
                     rtol=1e-5, atol=1e-8)
     if verbose:
         print(sol.message)
@@ -116,15 +105,18 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=
 class CSTRDataset(torch.utils.data.Dataset):
     """Dataset of transients obtained from a Brusselator."""
 
-    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, random=False):
+    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False):
         self.ids = np.arange(n_train)
         self.x1 = []
         self.x1_out = []
         self.x1_data = []
+        self.x1_data_detail = []
         self.x2 = []
         self.x2_out = []
-        skip = config["DATA"]["SKIP"]
-        y_sample = config["DATA"]["Y_SAMPLE"]
+        self.x2_data = []
+        self.x2_data_detail = []
+        
+        skip_time = config["DATA"]["SKIP_TIME"]
         
         if n_train == 1:
             self.Da = np.array([Da])
@@ -140,28 +132,57 @@ class CSTRDataset(torch.utils.data.Dataset):
         
         count = 0
         
+        x1_sampling_times = np.arange(start=skip_time, stop=tmax+1e-10, step=config["DATA"]["X1_SAMPLE_TIME"]).round(decimals=3)
+        x2_sampling_times = np.arange(start=skip_time, stop=tmax+1e-10, step=config["DATA"]["X2_SAMPLE_TIME"]).round(decimals=3)
+        
+        solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
+        full_times = self.insert_intermediate(solver_sampling_times, maxdt)
+        
         for _ in tqdm(range(n_train), leave=True, position=0):
 #             index = int(np.floor(count/10))
             index = count
             
-            sol = integrate_cstr(tmax=tmax, T=l_trajectories, Da=self.Da[index], B=B, beta=beta)
-            self.x2.append(sol.y[1, skip:-1])  # Observed variable at t shape (N, T)
-            self.x2_out.append(sol.y[1, skip+1:])  # Obeserved variabel at t+1
+            sol = integrate_cstr(tmin=0, tmax=tmax, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=full_times)
+            sol_detail = integrate_cstr(tmin=1, tmax=tmax, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(1,tmax,int(tmax*20)), y0 = sol.y[:,0])
             
-            x1 = np.zeros(sol.y[0, skip:].size) - 1
-            x1[::y_sample] = sol.y[0, skip::y_sample]
+            sol_t = sol.t.round(decimals=3)
             
-            self.x1.append(x1[:-1])  # Unobserved variable at t
-            self.x1_out.append(x1[1:])  # Unobserved variable at t
+            x1 = np.zeros(len(full_times)) - 1
+            x2 = np.zeros(len(full_times)) - 1
             
-            self.x1_data.append(sol.y[0, skip:].copy())
+            x1[np.in1d(full_times,x1_sampling_times)] = sol.y[0, np.in1d(sol_t,x1_sampling_times)]
+            x2[np.in1d(full_times,x2_sampling_times)] = sol.y[1, np.in1d(sol_t,x2_sampling_times)]
+            
+            self.x1.append(x1[:-1])  # x1 at time t
+            self.x1_out.append(x1[1:])  # x1 at t
+            
+            self.x2.append(x2[:-1])  # x2 at t
+            self.x2_out.append(x2[1:])  # x2 at t
+            
+            self.x1_data.append(sol.y[0, :].copy())
+            self.x2_data.append(sol.y[1, :].copy())
+            
+            self.x1_data_detail.append(sol_detail.y[0, :].copy())
+            self.x2_data_detail.append(sol_detail.y[1, :].copy())
+            
+            
             
             count += 1
-        self.tt = sol.t[skip:] - sol.t[skip]  # Time array
-        self.delta_t = self.tt[1]-self.tt[0]  # delta t
+        self.time = full_times - full_times[0] # Time array
+        self.solver_time = solver_sampling_times - solver_sampling_times[0]
+        self.time_detail = sol_detail.t - sol_detail.t[0]
         
-        print('Using dt of '+str(self.delta_t))
-
+#         self.delta_t = self.tt[1]-self.tt[0]  # delta t
+        
+#         print('Using dt of '+str(self.delta_t))
+    
+    def insert_intermediate(self, t_samp, max_dt):
+        t_arr = []
+        for i in range(len(t_samp)-1):
+            t_arr.append(np.arange(start=t_samp[i],stop=t_samp[i+1],step=max_dt))
+        t_arr.append(np.array([t_samp[-1]]))
+        return np.sort(np.unique(np.concatenate(t_arr).round(decimals=3).flatten()))
+    
     def __len__(self):
         return len(self.ids)
 
@@ -170,13 +191,13 @@ class CSTRDataset(torch.utils.data.Dataset):
         x1_out = self.x1_out[self.ids[index]]
         x2 = self.x2[self.ids[index]]
         x2_out = self.x2_out[self.ids[index]]
-        delta_t = self.delta_t
+        time = self.time
         Da = self.Da[self.ids[index]]
         return torch.tensor(x1, dtype=torch.float64), \
             torch.tensor(x1_out, dtype=torch.float64), \
             torch.tensor(x2, dtype=torch.float64), \
             torch.tensor(x2_out, dtype=torch.float64), \
-            torch.tensor(delta_t, dtype=torch.float64).unsqueeze(-1), \
+            torch.tensor(time, dtype=torch.float64), \
             torch.tensor(Da, dtype=torch.float64).unsqueeze(-1), \
 
     def save_data(self, path, filename):
@@ -211,7 +232,7 @@ class Snake(nn.Module):
 # class Network(nn.Module):
 class Network(jit.ScriptModule):
 
-    def __init__(self, hidden_cells, minmaxes, tau=torch.tensor([0.05]), beta=3, B=11, Da=0.33, device=None):
+    def __init__(self, hidden_cells, minmaxes, beta=3, B=11, Da=0.33, device=None):
         super(Network, self).__init__()
         self.hidden_cells = hidden_cells
         
@@ -245,27 +266,6 @@ class Network(jit.ScriptModule):
         self.integrator = 'RK2'
 #         self.integrator = self.RK4
         
-#         self.model = nn.Sequential(
-#             nn.Linear(3,32),
-#             self.activation(),
-#             nn.Linear(32,32),
-#             self.activation(),
-# #             nn.Linear(16,16),
-# #             self.activation(),
-#             nn.Linear(32,2),
-#         )
-        
-#         self.model = nn.Sequential(
-#             nn.LSTM(2,10,batch_first=True),
-#             nn.Linear(10,2),
-#         )
-        
-        
-#         self.tau = tau
-#         self.beta = torch.tensor(beta)
-#         self.B = torch.tensor(B)
-#         self.Da = torch.tensor(Da)
-    
     @jit.script_method
     def network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor) -> Tensor:        
         x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
@@ -360,6 +360,7 @@ class Network(jit.ScriptModule):
         """Forward pass"""
         x1_inputs = x1.unbind(1)
         x2_inputs = x2.unbind(1)
+        dt_inputs = dt.unbind(1)
         Da_input = Da#.squeeze(-1)
         
         x1_out = []
@@ -374,13 +375,15 @@ class Network(jit.ScriptModule):
             else:
                 x1_input = x1_out[j]
                 x2_input = x2_out[j]
+                
+            dt_input = dt_inputs[j]
             
             if self.integrator == 'Euler':
-                x1_integ, x2_integ = self.Euler(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt, Da_input)
+                x1_integ, x2_integ = self.Euler(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt_input.unsqueeze(-1), Da_input)
             elif self.integrator == 'RK4':
-                x1_integ, x2_integ = self.RK4(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt, Da_input)
+                x1_integ, x2_integ = self.RK4(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt_input.unsqueeze(-1), Da_input)
             elif self.integrator == 'RK2':
-                x1_integ, x2_integ = self.RK2(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt, Da_input)
+                x1_integ, x2_integ = self.RK2(x1_input.unsqueeze(-1), x2_input.unsqueeze(-1), dt_input.unsqueeze(-1), Da_input)
             else:
                 assert False, 'Specify Valid Integrator'
     
@@ -393,173 +396,14 @@ class Network(jit.ScriptModule):
         return x1_outs, x2_outs
     
 #     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+        
+        dt = time[...,1:] - time[...,:-1]
+        
         if warmup < x1.size()[1] or torch.any(x1[0]<0) or torch.any(x2[0]<0):
             return self.forward_manual(x1, x2, dt, Da, warmup)
         else:
-            return self.forward_full(x1, x2, dt, Da, warmup)
-            
-#     @jit.script_method
-#     def forward_bk2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
-#         """Forward pass"""
-        
-#         x1_input = (x1[:,:warmup] - self.x1min) / (self.x1max - self.x1min)
-#         x2_input = (x2[:,:warmup] - self.x2min) / (self.x2max - self.x2min)
-#         Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
-# #         Da_input = Da.repeat(1,x1_input.size()[1])
-        
-# #         ANN_input = torch.stack((x1_input,x2_input),dim=-1)
-#         ANN_input = torch.stack((x1_input,x2_input, Da_input),dim=-1)
-
-# #         ANN_output = self.model(ANN_input)
-#         for layer in self.layers:
-#             ANN_input = layer(ANN_input)
-#             ANN_input = self.activation(ANN_input)
-#         ANN_output = self.output_layer(ANN_input)
-            
-# #         x1_outs = (self.sigmoid(ANN_output[:,:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
-# #         x2_outs = (self.sigmoid(ANN_output[:,:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
-#         x1_outs_warmup = x1[:,:warmup] + ANN_output[:,:,0]
-#         x2_outs_warmup = x2[:,:warmup] + ANN_output[:,:,1]
-        
-# #         x1_outs_warmup = (self.sigmoid(ANN_output[:,:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
-# #         x2_outs_warmup = (self.sigmoid(ANN_output[:,:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
-        
-#         x1_out = []
-#         x2_out = []
-        
-#         if (x1.size()[1] > warmup):
-#             x1_out.append(x1[:,warmup])
-#             x2_out.append(x2[:,warmup])
-            
-#         Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
-# #         Da_input = Da.squeeze(-1)
-        
-#         for j in range(x1.size()[1]-warmup):
-#             x1_input = (x1_out[j] - self.x1min) / (self.x1max - self.x1min)
-#             x2_input = (x2_out[j] - self.x2min) / (self.x2max - self.x2min)
-
-            
-# #             ANN_input = torch.stack((x1_input,x2_input),dim=-1)
-# #             print(x1_input.shape)
-# #             print(x2_input.shape)
-# #             print(Da_input.shape)
-# #             print(Da_input.squeeze(-1).shape)
-#             ANN_input = torch.stack((x1_input,x2_input,Da_input),dim=-1)
-
-# #             ANN_output = self.model(ANN_input)
-            
-#             for layer2 in self.layers:
-#                 ANN_input = layer2(ANN_input)
-#                 ANN_input = self.activation(ANN_input)
-#             ANN_output = self.output_layer(ANN_input)
-            
-            
-
-            
-#             x1_integ =  ANN_output[:,0]  + x1_out[j] # * dt.squeeze()
-#             x2_integ =  ANN_output[:,1]  + x2_out[j] # * dt.squeeze()
-# #             x1_integ = (self.sigmoid(ANN_output[:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
-# #             x2_integ = (self.sigmoid(ANN_output[:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
-
-# #             x1_integ = self.sigmoid(ANN_output[:,0])*1.1
-# #             x2_integ = self.sigmoid(ANN_output[:,1])*10
-
-#             x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*1000)
-#             x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*1000)
-    
-#             x1_out.append(x1_integ)
-#             x2_out.append(x2_integ)
-
-            
-#         if (x1.size()[1] > warmup):
-#             x1_outs = torch.cat((x1_outs_warmup,torch.stack(x1_out[1:],dim=1)),dim=1)
-#             x2_outs = torch.cat((x2_outs_warmup,torch.stack(x2_out[1:],dim=1)),dim=1)
-#         else:
-#             x1_outs = x1_outs_warmup
-#             x2_outs = x2_outs_warmup
-        
-#         return x1_outs, x2_outs
-    
-#     def forward_bk(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
-#         """Forward pass"""
-        
-#         x1input = (x1 - self.x1min) / (self.x1max - self.x1min)
-#         x2input = (x2 - self.x2min) / (self.x2max - self.x2min)
-
-#         ANN_input = torch.stack((x1input,x2input),dim=-1)
-
-#         ANN_output = self.model(ANN_input)
-            
-            
-# #         x1_outs = (self.sigmoid(ANN_output[:,:,0])*1.2-0.1) * (self.x1max - self.x1min) + self.x1min
-# #         x2_outs = (self.sigmoid(ANN_output[:,:,1])*1.2-0.1) * (self.x2max - self.x2min) + self.x2min
-#         x1_outs = x1 + ANN_output[:,:,0]
-#         x2_outs = x2 + ANN_output[:,:,1]
-        
-#         return x1_outs, x2_outs
-
-#     @jit.script_method
-#     def forward_bk3(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
-#         """Forward pass"""
-        
-        
-        
-#         x1_inputs = x1.unbind(1)
-#         x2_inputs = x2.unbind(1)
-#         Da_input = (Da.squeeze(-1) - 0.2) / (0.5 - 0.2)
-
-#         if torch.any(x1_inputs[0]<0) or torch.any(x2_inputs[0]<0):
-#             assert False, "All first inputs must be available"
-        
-#         x1_out = []
-#         x2_out = []
-        
-#         x1_out.append(x1_inputs[0])
-#         x2_out.append(x2_inputs[0])
-        
-#         for j in range(len(x1_inputs)):
-            
-#             if j < warmup:
-#                 x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
-#                 x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
-# #                 x1_input = x1_inputs[j]
-# #                 x2_input = x2_inputs[j]
-        
-#             else:
-#                 x1_input = x1_out[j]
-#                 x2_input = x2_out[j]
-
-            
-#             x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
-#             x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
-
-            
-#             ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
-
-            
-#             for layer in self.layers:
-#                 ANN_input = layer(ANN_input)
-#                 ANN_input = self.activation(ANN_input)
-                
-#             ANN_output = self.output_layer(ANN_input)
-            
-#             x1_integ = x1_input + ANN_output[:,0] # * dt.squeeze()
-#             x2_integ = x2_input + ANN_output[:,1] # * dt.squeeze()
-            
-#             x1_integ = torch.clip(x1_integ, min = 0, max = self.x1max*1000)
-#             x2_integ = torch.clip(x2_integ, min = 0, max = self.x2max*1000)
-
-    
-#             x1_out.append(x1_integ)
-#             x2_out.append(x2_integ)
-            
-#         x1_outs = torch.stack(x1_out[1:],dim=1)
-#         x2_outs = torch.stack(x2_out[1:],dim=1)
-        
-#         return x1_outs, x2_outs
-
-            
+            return self.forward_full(x1, x2, dt, Da, warmup)            
 
 class my_Model():
     def __init__(self, dataloader_train, dataloader_val, network, learning_rate=0.05, device=None):
@@ -574,7 +418,8 @@ class my_Model():
 
         print('Using:', self.device)
         
-        self.y_loss_mult = config["DATA"]["Y_SAMPLE"]
+        self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"]
+        self.x2_loss_mult = config["DATA"]["X2_SAMPLE_TIME"]
 
         self.net = network.to(self.device)
 
@@ -648,7 +493,7 @@ class my_Model():
         self.net.train()
         cnt, sum_loss = 0, 0
         iters = len(self.dataloader_train)
-        for (x1, x1out, x2, x2out, dt, Da) in self.dataloader_train:
+        for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
             self.optimizer.zero_grad()
             
             if epoch == 200:
@@ -656,7 +501,7 @@ class my_Model():
                             self.net.parameters(), lr=self.lr, amsgrad=True)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-2, total_steps=self.total_steps,
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=5e-2, total_steps=self.total_steps,
                                                             final_div_factor=1e2,
                                                             )
             
@@ -668,7 +513,7 @@ class my_Model():
             teacher_forcing_indices = indices[int(batch_size*self.autoreg_prop):]
 
             
-            if epoch > 200:
+            if epoch > 2:
 #                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
                 warmup = int(self.warmup * x1.size()[1])
             else:
@@ -677,7 +522,7 @@ class my_Model():
             # Teacher Forcing
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
-                                            dt.to(self.device), 
+                                            time.to(self.device), 
                                             Da.to(self.device), time_length)
             
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
@@ -700,11 +545,11 @@ class my_Model():
             loss_tf = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                     torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
-                    ) / 2
+                    ) * self.x2_loss_mult / 2
             loss_tf += self.criterion(
                     torch.where(x1out.to(self.device)>0, x1_norm.to(self.device), 0.),
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
-                    ) * self.y_loss_mult / 2
+                    ) * self.x1_loss_mult / 2
 #             print('my losses')
 #             print(torch.where(x1out.to(self.device)>0, x1out.to(self.device), 0.)[0,:20])
 #             print(torch.where(x1out.to(self.device)>0, x1out_hat, 0.)[0,:20])
@@ -728,7 +573,7 @@ class my_Model():
 
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
-                                            dt.to(self.device), 
+                                            time.to(self.device), 
                                             Da.to(self.device), warmup)
 
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
@@ -739,11 +584,11 @@ class my_Model():
             loss_autoreg = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                     torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
-                    ) / 2
+                    ) * self.x2_loss_mult / 2
             loss_autoreg += self.criterion(
                     torch.where(x1out.to(self.device)>0, x1_norm.to(self.device), 0.),
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
-                    ) * self.y_loss_mult / 2
+                    ) * self.x1_loss_mult / 2
             
             loss = torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha)
             
@@ -799,7 +644,7 @@ class my_Model():
         self.net.eval()
         cnt, sum_loss = 0, 0
         with torch.no_grad():
-            for (x1, x1out, x2, x2out, dt, Da) in self.dataloader_train:
+            for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
                 self.optimizer.zero_grad()
                 
                 batch_size = x1.size()[0]
@@ -812,7 +657,7 @@ class my_Model():
                 else:
                     warmup = time_length
 
-                x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), dt.to(self.device), Da.to(self.device), warmup)
+                x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
 #                 loss = self.criterion(x2out.to(self.device)[x2out>0], x2out_hat[x2out>0])
 #                 loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0])# * self.y_loss_mult
 
@@ -825,11 +670,11 @@ class my_Model():
                 loss_x2 = self.criterion(
                         torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                         torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
-                        ) / 2
+                        ) * self.x2_loss_mult / 2
                 loss_x1 = self.criterion(
                         torch.where(x1out.to(self.device)>0, x1_norm.to(self.device), 0.),
                         torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
-                        ) * self.y_loss_mult / 2
+                        ) * self.x1_loss_mult / 2
         
                 loss = torch.log(loss_x1 + loss_x2)
 

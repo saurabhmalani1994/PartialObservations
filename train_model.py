@@ -40,11 +40,11 @@ def main(config):
     dataloader_val = DataLoader(dataset_val, batch_size=config["TRAINING"]["BATCH_SIZE"],
                                 shuffle=False, num_workers=1, pin_memory=True)
 
-    x1max = np.max(dataset_train.x1)
-    x1min = np.min(dataset_train.x1)
+    x1max = np.max(np.array(dataset_train.x1))
+    x1min = np.min(np.array(dataset_train.x1)[np.array(dataset_train.x1)>0])
 
-    x2max = np.max(dataset_train.x2)
-    x2min = np.min(dataset_train.x2)
+    x2max = np.max(np.array(dataset_train.x2))
+    x2min = np.min(np.array(dataset_train.x2)[np.array(dataset_train.x2)>0])
     
     f = open('minmax/maxmin.txt','w')  # w : writing mode  /  r : reading mode  /  a  :  appending mode
     f.write('{}\n'.format(x1max))
@@ -69,7 +69,6 @@ def main(config):
     
     # Create the network architecture
     network = Network(hidden_cells=config["MODEL"]["NUM_HIDDEN"],
-                      tau = dataset_train.delta_t,
                       B=config["PAR"]["B"],
                       beta=config["PAR"]["beta"],
                       Da=config["PAR"]["Da"],
