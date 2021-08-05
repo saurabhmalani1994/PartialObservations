@@ -23,9 +23,9 @@ import torch.jit as jit
 
 config = {}
 config["DATA"] = {}
-config["DATA"]["TMAX"] = 10
-config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.05
-config["DATA"]["N_TRAIN"] = 500
+config["DATA"]["TMAX"] = 4
+config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
+config["DATA"]["N_TRAIN"] = 200
 config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
@@ -40,7 +40,7 @@ config["PAR"]["B"] = 11
 config["PAR"]["beta"] = 3
 
 config["TRAINING"] = {}
-config["TRAINING"]["BATCH_SIZE"] = 512
+config["TRAINING"]["BATCH_SIZE"] = 256
 config["TRAINING"]["LEARNING_RATE"] = 1e-2
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
@@ -280,11 +280,11 @@ class Network(jit.ScriptModule):
             ANN_input = self.activation(ANN_input)
         ANN_output = self.output_layer(ANN_input)
         
-#         dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
-#         dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
+        dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
+        dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
 
-        dx1dt = ANN_output[...,0] / 10
-        dx2dt = ANN_output[...,1] 
+#         dx1dt = ANN_output[...,0] / 10
+#         dx2dt = ANN_output[...,1] 
         
         output = torch.stack((dx1dt, dx2dt), dim=-1)
         

@@ -72,10 +72,11 @@ def main(config, Da=config["PAR"]["Da"]):
     
     for i in range(len(Da_list)):
         Da = Da_list[i]
-        dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"]*2,
-                               config["DATA"]["L_TRAJECTORIES"]*2, 
+        dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"]*5,
+                               config["DATA"]["L_TRAJECTORIES"]*5, 
                                Da=Da,
                                B=config["PAR"]["B"],
+                            maxdt=config["DATA"]["MAX_DELTA_T"],
                                beta=config["PAR"]["beta"])
 
         
@@ -161,7 +162,8 @@ def main(config, Da=config["PAR"]["Da"]):
         
         y_in = np.stack((dataset_test.x1[0][0],dataset_test.x2[0][0]),axis=-1)
         
-        sol = solve_ivp(my_ode,[0,dataset_test.time[-1]], y_in, args=(dataset_test.Da,), t_eval = dataset_test.time,
+        solver_time = np.linspace(0,dataset_test.time[-1],1000)
+        sol = solve_ivp(my_ode,[0,dataset_test.time[-1]], y_in, args=(dataset_test.Da,), t_eval = solver_time,
                     rtol=1e-5, atol=1e-8)
         
         x1_out = sol.y[0,:]
@@ -177,7 +179,7 @@ def main(config, Da=config["PAR"]["Da"]):
         ax = fig.add_subplot(111)
         ax.plot(dataset_test.time[1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time,x1_out,'x-',label='predicted',linewidth=3)
+        ax.plot(solver_time,x1_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_1$',fontsize=40)
         plt.yticks(fontsize=25)
@@ -191,7 +193,7 @@ def main(config, Da=config["PAR"]["Da"]):
         ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
 #         ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'k',label='true trajectory',linewidth=3)
         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time,x2_out,'x-',label='predicted',linewidth=3)
+        ax.plot(solver_time,x2_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_2$',fontsize=40)
         plt.yticks(fontsize=25)
