@@ -22,16 +22,19 @@ def main(config):
                                 config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
+                            maxdt=config["DATA"]["MAX_DELTA_T"],
                            beta=config["PAR"]["beta"])
     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
                               config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
+                            maxdt=config["DATA"]["MAX_DELTA_T"],
                            beta=config["PAR"]["beta"], random=True)
     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
                            config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
+                            maxdt=config["DATA"]["MAX_DELTA_T"],
                            beta=config["PAR"]["beta"])
     
     # Create PyTorch dataloaders for train and validation data

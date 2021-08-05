@@ -25,13 +25,14 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 10
 config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.05
-config["DATA"]["N_TRAIN"] = 200
+config["DATA"]["N_TRAIN"] = 500
 config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_TIME"] = 1
-config["DATA"]["X2_SAMPLE_TIME"] = 0.3
+config["DATA"]["X1_SAMPLE_TIME"] = 0.1
+config["DATA"]["X2_SAMPLE_TIME"] = 0.1
+config["DATA"]["MAX_DELTA_T"] = 0.1
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -39,7 +40,7 @@ config["PAR"]["B"] = 11
 config["PAR"]["beta"] = 3
 
 config["TRAINING"] = {}
-config["TRAINING"]["BATCH_SIZE"] = 256
+config["TRAINING"]["BATCH_SIZE"] = 512
 config["TRAINING"]["LEARNING_RATE"] = 1e-2
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
@@ -122,12 +123,12 @@ class CSTRDataset(torch.utils.data.Dataset):
             self.Da = np.array([Da])
         else:
             if random:
-#                 self.Da = np.random.uniform(0.2,0.5,n_train)   
-                self.Da = np.concatenate((np.random.uniform(0.2,0.22,int(0.2*n_train)),np.random.uniform(0.22,0.5,n_train-int(0.2*n_train))))
+                self.Da = np.random.uniform(0.2,0.5,n_train)   
+#                 self.Da = np.concatenate((np.random.uniform(0.2,0.22,int(0.2*n_train)),np.random.uniform(0.22,0.5,n_train-int(0.2*n_train))))
 #                 self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
-#                 self.Da = np.linspace(0.2,0.5,n_train)
-                self.Da = np.concatenate((np.linspace(0.2,0.22,int(0.2*n_train)),np.linspace(0.22,0.5,n_train-int(0.2*n_train))))
+                self.Da = np.linspace(0.2,0.5,n_train)
+#                 self.Da = np.concatenate((np.linspace(0.2,0.22,int(0.2*n_train)),np.linspace(0.22,0.5,n_train-int(0.2*n_train))))
 #                 self.Da = np.linspace(0.33,0.33,n_train)   
         
         count = 0
@@ -256,8 +257,8 @@ class Network(jit.ScriptModule):
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
-#         self.activation = Snake()
-        self.activation = nn.SiLU()
+        self.activation = Snake()
+#         self.activation = nn.SiLU()
 #         self.activation = nn.Tanh()
 #         self.activation = nn.SELU()
         
@@ -418,8 +419,8 @@ class my_Model():
 
         print('Using:', self.device)
         
-        self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"]
-        self.x2_loss_mult = config["DATA"]["X2_SAMPLE_TIME"]
+        self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"] / config["DATA"]["X2_SAMPLE_TIME"]
+        self.x2_loss_mult = 1
 
         self.net = network.to(self.device)
 
@@ -501,7 +502,7 @@ class my_Model():
                             self.net.parameters(), lr=self.lr, amsgrad=True)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=5e-2, total_steps=self.total_steps,
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-2, total_steps=self.total_steps,
                                                             final_div_factor=1e2,
                                                             )
             
@@ -513,7 +514,7 @@ class my_Model():
             teacher_forcing_indices = indices[int(batch_size*self.autoreg_prop):]
 
             
-            if epoch > 2:
+            if epoch > 200:
 #                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
                 warmup = int(self.warmup * x1.size()[1])
             else:
@@ -529,18 +530,6 @@ class my_Model():
             x2_norm = (x2out - self.x2min) / (self.x2max - self.x2min)
             x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
             x2_hat_norm = (x2out_hat - self.x2min) / (self.x2max - self.x2min)
-            
-#             loss = self.criterion(x2out.to(self.device)[x2out>0], x2out_hat[x2out>0])
-#             loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0])# * self.y_loss_mult
-
-#             loss_x2 = self.criterion(
-#                     x2out.to(self.device),
-#                     torch.where(x2out.to(self.device)>0, x2out_hat, x2out.to(self.device))
-#                     ) / 2
-#             loss_x1 = self.criterion(
-#                     x1out.to(self.device),
-#                     torch.where(x1out.to(self.device)>0, x1out_hat, x1out.to(self.device))
-#                     ) * self.y_loss_mult / 2
 
             loss_tf = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
@@ -550,26 +539,6 @@ class my_Model():
                     torch.where(x1out.to(self.device)>0, x1_norm.to(self.device), 0.),
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
                     ) * self.x1_loss_mult / 2
-#             print('my losses')
-#             print(torch.where(x1out.to(self.device)>0, x1out.to(self.device), 0.)[0,:20])
-#             print(torch.where(x1out.to(self.device)>0, x1out_hat, 0.)[0,:20])
-#             print()
-#             assert(False)
-
-            ## Auto regressive ##
-#             x1out_hat, x2out_hat = self.net(x1[autoreg_indices,:].to(self.device), 
-#                                             x2[autoreg_indices,:].to(self.device), 
-#                                             dt[autoreg_indices,:].to(self.device), 
-#                                             Da[autoreg_indices,:].to(self.device), warmup)
-        
-#             loss += self.criterion(
-#                     torch.where(x2out[autoreg_indices,:].to(self.device)>0, x2out[autoreg_indices,:].to(self.device), 0.),
-#                     torch.where(x2out[autoreg_indices,:].to(self.device)>0, x2out_hat, 0.)
-#                     ) / 20
-#             loss += self.criterion(
-#                     torch.where(x1out[autoreg_indices,:].to(self.device)>0, x1out[autoreg_indices,:].to(self.device), 0.),
-#                     torch.where(x1out[autoreg_indices,:].to(self.device)>0, x1out_hat, 0.)
-#                     ) * self.y_loss_mult / 20
 
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
@@ -592,15 +561,8 @@ class my_Model():
             
             loss = torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha)
             
-#             loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
-#             loss = self.criterion(x2out.to(self.device), x2out_hat)
-#             loss += self.criterion(x1out.to(self.device), x1out_hat) * self.y_loss_mult
-#             loss = loss/batch_size
-            
-#             loss = loss / 2
-            
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1)
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
             self.optimizer.step()
             
 
@@ -622,6 +584,7 @@ class my_Model():
 #                 self.lr_track.append(self.scheduler_first.get_lr())
             
             sum_loss += torch.exp(loss).detach().cpu().numpy()
+#             sum_loss += loss.detach().cpu().numpy()
             cnt += 1
         
 #         if epoch > 2560:
@@ -658,8 +621,6 @@ class my_Model():
                     warmup = time_length
 
                 x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
-#                 loss = self.criterion(x2out.to(self.device)[x2out>0], x2out_hat[x2out>0])
-#                 loss += self.criterion(x1out.to(self.device)[x1out>0], x1out_hat[x1out>0])# * self.y_loss_mult
 
 
                 x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
@@ -677,10 +638,6 @@ class my_Model():
                         ) * self.x1_loss_mult / 2
         
                 loss = torch.log(loss_x1 + loss_x2)
-
-#                 loss = self.criterion(torch.cat((x1out,x2out),dim=-1).to(self.device), torch.cat((x1out_hat,x2out_hat),dim=-1))
-#                 loss += self.criterion(x1out.to(self.device), x1out_hat) * self.y_loss_mult
-#                 loss = loss/batch_size
                 
                 sum_loss += torch.exp(loss).detach().cpu().numpy()
                 cnt += 1
