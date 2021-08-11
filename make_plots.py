@@ -77,6 +77,9 @@ def main(config, Da=config["PAR"]["Da"]):
                                Da=Da,
                                B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
+                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
+                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                skip_time=config["DATA"]["SKIP_TIME"],
                                beta=config["PAR"]["beta"])
 
         
@@ -186,7 +189,7 @@ def main(config, Da=config["PAR"]["Da"]):
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
-        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da[0]) + 'index_' + str(index) + '.png',format='png')
+        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da[0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
@@ -200,7 +203,7 @@ def main(config, Da=config["PAR"]["Da"]):
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
-        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '.png',format='png')
+        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
         
 #         assert False
 
@@ -219,7 +222,8 @@ def main(config, Da=config["PAR"]["Da"]):
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
-#         fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da[0]) + 'index_' + str(index) + '.png',format='png')
+        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
+
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
@@ -232,7 +236,7 @@ def main(config, Da=config["PAR"]["Da"]):
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
-#         fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '.png',format='png')
+        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
         
 #         index += 1
         
@@ -253,7 +257,9 @@ def main(config, Da=config["PAR"]["Da"]):
     ax.plot([np.min(real_RHS_x1),np.max(real_RHS_x1)],[np.min(real_RHS_x1),np.max(real_RHS_x1)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_1$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
-    fig.savefig('Figures/RHS for x1' + '.png',format='png')
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    fig.savefig('Figures/RHS for x1' + '.png',format='png', bbox_inches='tight')
 
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
@@ -261,7 +267,9 @@ def main(config, Da=config["PAR"]["Da"]):
     ax.plot([np.min(real_RHS_x2),np.max(real_RHS_x2)],[np.min(real_RHS_x2),np.max(real_RHS_x2)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_2$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
-    fig.savefig('Figures/RHS for x2' + '.png',format='png')
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    fig.savefig('Figures/RHS for x2' + '.png',format='png', bbox_inches='tight')
     
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
@@ -269,7 +277,9 @@ def main(config, Da=config["PAR"]["Da"]):
     ax.plot([np.min(real_RHS_x1_pred),np.max(real_RHS_x1_pred)],[np.min(real_RHS_x1_pred),np.max(real_RHS_x1_pred)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_1$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
-    fig.savefig('Figures/RHS for x1_pred' + '.png',format='png')
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    fig.savefig('Figures/RHS for x1_pred' + '.png',format='png', bbox_inches='tight')
 
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
@@ -277,7 +287,9 @@ def main(config, Da=config["PAR"]["Da"]):
     ax.plot([np.min(real_RHS_x2_pred),np.max(real_RHS_x2_pred)],[np.min(real_RHS_x2_pred),np.max(real_RHS_x2_pred)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_2$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
-    fig.savefig('Figures/RHS for x2_pred' + '.png',format='png')
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    fig.savefig('Figures/RHS for x2_pred' + '.png',format='png', bbox_inches='tight')
     
 
 

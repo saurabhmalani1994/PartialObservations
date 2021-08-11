@@ -23,18 +23,27 @@ def main(config):
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
+                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
+                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"])
     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
                               config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
+                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
+                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"], random=True)
     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
                            config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
+                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
+                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"])
     
     # Create PyTorch dataloaders for train and validation data

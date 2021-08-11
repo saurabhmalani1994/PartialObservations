@@ -23,16 +23,16 @@ import torch.jit as jit
 
 config = {}
 config["DATA"] = {}
-config["DATA"]["TMAX"] = 4
+config["DATA"]["TMAX"] = 6
 config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
 config["DATA"]["N_TRAIN"] = 200
 config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_TIME"] = 0.1
-config["DATA"]["X2_SAMPLE_TIME"] = 0.1
-config["DATA"]["MAX_DELTA_T"] = 0.1
+config["DATA"]["X1_SAMPLE_TIME"] = 1.3
+config["DATA"]["X2_SAMPLE_TIME"] = 0.7
+config["DATA"]["MAX_DELTA_T"] = 0.2
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -106,7 +106,7 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=
 class CSTRDataset(torch.utils.data.Dataset):
     """Dataset of transients obtained from a Brusselator."""
 
-    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False):
+    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_time=0.1, x2_sample_time=0.1, skip_time=1):
         self.ids = np.arange(n_train)
         self.x1 = []
         self.x1_out = []
@@ -116,8 +116,7 @@ class CSTRDataset(torch.utils.data.Dataset):
         self.x2_out = []
         self.x2_data = []
         self.x2_data_detail = []
-        
-        skip_time = config["DATA"]["SKIP_TIME"]
+
         
         if n_train == 1:
             self.Da = np.array([Da])
@@ -133,8 +132,8 @@ class CSTRDataset(torch.utils.data.Dataset):
         
         count = 0
         
-        x1_sampling_times = np.arange(start=skip_time, stop=tmax+1e-10, step=config["DATA"]["X1_SAMPLE_TIME"]).round(decimals=3)
-        x2_sampling_times = np.arange(start=skip_time, stop=tmax+1e-10, step=config["DATA"]["X2_SAMPLE_TIME"]).round(decimals=3)
+        x1_sampling_times = np.arange(start=skip_time, stop=tmax+skip_time+1e-10, step=x1_sample_time).round(decimals=3)
+        x2_sampling_times = np.arange(start=skip_time, stop=tmax+skip_time+1e-10, step=x2_sample_time).round(decimals=3)
         
         solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
         full_times = self.insert_intermediate(solver_sampling_times, maxdt)
@@ -143,8 +142,8 @@ class CSTRDataset(torch.utils.data.Dataset):
 #             index = int(np.floor(count/10))
             index = count
             
-            sol = integrate_cstr(tmin=0, tmax=tmax, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=full_times)
-            sol_detail = integrate_cstr(tmin=1, tmax=tmax, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(1,tmax,int(tmax*20)), y0 = sol.y[:,0])
+            sol = integrate_cstr(tmin=0, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=full_times)
+            sol_detail = integrate_cstr(tmin=1, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(1,tmax+skip_time,int(tmax*20)), y0 = sol.y[:,0])
             
             sol_t = sol.t.round(decimals=3)
             
@@ -257,15 +256,32 @@ class Network(jit.ScriptModule):
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
-        self.activation = Snake()
-#         self.activation = nn.SiLU()
+#         self.activation = Snake()
+        self.activation = nn.SiLU()
 #         self.activation = nn.Tanh()
 #         self.activation = nn.SELU()
         
         self.sigmoid = nn.Sigmoid()
         
-        self.integrator = 'RK2'
-#         self.integrator = self.RK4
+        ## Euler, RK2 or RK4 ##
+        self.integrator = 'RK4'
+        
+        ## Black or Grey ##
+        self.box = 'Black'
+        
+        ## If Grey-Box, Are Parameters Trainable or Fixed ##
+        self.parameter_knowledge = 'Fixed'
+        
+        
+        if self.parameter_knowledge == 'Fixed':
+            self.B = nn.Parameter(torch.tensor(B), requires_grad = False)
+            self.beta = nn.Parameter(torch.tensor(beta), requires_grad = False)
+        elif self.parameter_knowledge == 'Trainable':
+            self.B = nn.Parameter(torch.tensor(7), requires_grad = True)
+            self.beta = nn.Parameter(torch.tensor(7), requires_grad = True)
+        else:
+            assert False ,'Tell me whether or not to train the parameters'
+        
         
     @jit.script_method
     def network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor) -> Tensor:        
@@ -280,15 +296,33 @@ class Network(jit.ScriptModule):
             ANN_input = self.activation(ANN_input)
         ANN_output = self.output_layer(ANN_input)
         
-        dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
-        dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
-
-#         dx1dt = ANN_output[...,0] / 10
-#         dx2dt = ANN_output[...,1] 
+        
+        if self.box == 'Black':
+            return self.BlackBox(ANN_output)
+        elif self.box == 'Grey':
+            return self.GreyBox(ANN_output)
+        else:
+            assert False, 'No Box of this Color'
+    
+    @jit.script_method
+    def BlackBox(self, ANN_output: Tensor) -> Tensor:
+#         dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
+#         dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
+        
+        dx1dt = ANN_output[...,0] / 10
+        dx2dt = ANN_output[...,1] 
         
         output = torch.stack((dx1dt, dx2dt), dim=-1)
         
         return output
+    
+    @jit.script_method
+    def GreyBox(self, ANN_output: Tensor) -> Tensor:
+        ## TO IMPLEMENT ##
+        
+        assert False, 'Grey Box not implemented yet'
+        
+        return self.BlackBox(ANN_output)
     
     def Euler(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
         
