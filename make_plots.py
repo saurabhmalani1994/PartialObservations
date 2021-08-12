@@ -70,6 +70,11 @@ def main(config, Da=config["PAR"]["Da"]):
     pred_RHS_x1_pred = []
     pred_RHS_x2_pred = []
     
+    real_phi = []
+    real_phi_pred = []
+    pred_phi = []
+    pred_phi_pred = []
+    
     for i in range(len(Da_list)):
         Da = Da_list[i]
         dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"]*5,
@@ -128,6 +133,21 @@ def main(config, Da=config["PAR"]["Da"]):
 
         
         network.double()
+        
+        if network.box == 'Grey' or network.box == 'Gray':
+            def phi_network(x1_input,x2_input,Da):
+                x1_input_norm = (x1_input - network.x1min) / (network.x1max - network.x1min)
+                x2_input_norm = (x2_input - network.x2min) / (network.x2max - network.x2min)
+                Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+
+                ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
+
+                for layer in network.layers:
+                    ANN_input = layer(ANN_input)
+                    ANN_input = network.activation(ANN_input)
+                ANN_output = network.output_layer(ANN_input)
+                
+                return ANN_output
 
 
         # print(len(x))
@@ -159,6 +179,12 @@ def main(config, Da=config["PAR"]["Da"]):
         ANN_output = network.network(x1_in, x2_in, myD)
         pred_RHS_x1.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
         pred_RHS_x2.append(ANN_output[...,1].detach().cpu().squeeze().numpy())
+        
+        
+        if network.box == 'Grey' or network.box == 'Gray':
+            real_phi.append((myD * (1-x1_in) * torch.exp(x2_in)).detach().cpu().squeeze().numpy())
+            ANN_output = phi_network(x1_in, x2_in, myD) * torch.pow(2.,network.ANNPower1*7)
+            pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
         
 #         assert False
         
@@ -290,9 +316,19 @@ def main(config, Da=config["PAR"]["Da"]):
     plt.yticks(fontsize=25)
     plt.xticks(fontsize=25)
     fig.savefig('Figures/RHS for x2_pred' + '.png',format='png', bbox_inches='tight')
+
+    if network.box == 'Grey' or network.box == 'Gray':
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111)
+        ax.plot(real_phi, pred_phi,'b.')
+        ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
+        ax.set_xlabel('True phi: ',fontsize=40)
+        ax.set_ylabel('Predicted phi: ',fontsize=40)
+        plt.yticks(fontsize=25)
+        plt.xticks(fontsize=25)
+        fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+
     
-
-
     
     
 #     assert(False)

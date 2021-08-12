@@ -30,14 +30,14 @@ config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_TIME"] = 1.3
-config["DATA"]["X2_SAMPLE_TIME"] = 0.7
-config["DATA"]["MAX_DELTA_T"] = 0.2
+config["DATA"]["X1_SAMPLE_TIME"] = 0.1
+config["DATA"]["X2_SAMPLE_TIME"] = 0.1
+config["DATA"]["MAX_DELTA_T"] = 0.1
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
-config["PAR"]["B"] = 11
-config["PAR"]["beta"] = 3
+config["PAR"]["B"] = 11.
+config["PAR"]["beta"] = 3.
 
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
@@ -45,7 +45,7 @@ config["TRAINING"]["LEARNING_RATE"] = 1e-2
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
-config["MODEL"]["NUM_HIDDEN"] = [32, 32]
+config["MODEL"]["NUM_HIDDEN"] = [64, 64]
 
 np.random.seed(1234)
 torch.manual_seed(42)
@@ -232,7 +232,7 @@ class Snake(nn.Module):
 # class Network(nn.Module):
 class Network(jit.ScriptModule):
 
-    def __init__(self, hidden_cells, minmaxes, beta=3, B=11, Da=0.33, device=None):
+    def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, device=None):
         super(Network, self).__init__()
         self.hidden_cells = hidden_cells
         
@@ -245,6 +245,21 @@ class Network(jit.ScriptModule):
         else:
             self.device = device        
         
+        ############################################################
+        ##                        Settings                        ##
+        ############################################################
+        
+        ## Euler, RK2 or RK4 ##
+        self.integrator = 'RK2'
+        
+        ## Black or Grey/Gray ##
+        self.box = 'Black'
+        
+        ## If Grey-Box, Are Parameters Trainable or Fixed ##
+        self.parameter_knowledge = 'Fixed'
+        
+        ############################################################
+        
         self.layers = nn.ModuleList()
         self.hidden_cells = hidden_cells
         
@@ -252,7 +267,16 @@ class Network(jit.ScriptModule):
         for i in range(len(hidden_cells)-1):
             self.layers.append(nn.Linear(hidden_cells[i],hidden_cells[i+1]))
             
-        self.output_layer = nn.Linear(hidden_cells[-1],2)
+        if self.box == 'Black':
+            self.output_layer = nn.Linear(hidden_cells[-1],2)
+            self.ANNPower1 = nn.Parameter(torch.tensor(-0.5), requires_grad = True)
+            self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = True)
+        elif self.box == 'Grey' or self.box == 'Gray':
+            self.output_layer = nn.Linear(hidden_cells[-1],2)
+            self.ANNPower1 = nn.Parameter(torch.tensor(0.), requires_grad = True)
+            self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = False)
+        else:
+            assert False, 'No Box of this color'
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
@@ -263,17 +287,7 @@ class Network(jit.ScriptModule):
         
         self.sigmoid = nn.Sigmoid()
         
-        ## Euler, RK2 or RK4 ##
-        self.integrator = 'RK4'
-        
-        ## Black or Grey ##
-        self.box = 'Black'
-        
-        ## If Grey-Box, Are Parameters Trainable or Fixed ##
-        self.parameter_knowledge = 'Fixed'
-        
-        
-        if self.parameter_knowledge == 'Fixed':
+        if self.parameter_knowledge == 'Fixed' or self.box == 'Black':
             self.B = nn.Parameter(torch.tensor(B), requires_grad = False)
             self.beta = nn.Parameter(torch.tensor(beta), requires_grad = False)
         elif self.parameter_knowledge == 'Trainable':
@@ -299,8 +313,8 @@ class Network(jit.ScriptModule):
         
         if self.box == 'Black':
             return self.BlackBox(ANN_output)
-        elif self.box == 'Grey':
-            return self.GreyBox(ANN_output)
+        elif self.box == 'Grey' or self.box == 'Gray':
+            return self.GreyBox(x1_input, x2_input, ANN_output)
         else:
             assert False, 'No Box of this Color'
     
@@ -309,20 +323,29 @@ class Network(jit.ScriptModule):
 #         dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
 #         dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
         
-        dx1dt = ANN_output[...,0] / 10
-        dx2dt = ANN_output[...,1] 
+        dx1dt = ANN_output[...,0] * torch.pow(2.,self.ANNPower1*7)
+        dx2dt = ANN_output[...,1] * torch.pow(2.,self.ANNPower2*7)
         
         output = torch.stack((dx1dt, dx2dt), dim=-1)
         
         return output
     
     @jit.script_method
-    def GreyBox(self, ANN_output: Tensor) -> Tensor:
+    def GreyBox(self, x1: Tensor, x2: Tensor, ANN_output: Tensor) -> Tensor:
         ## TO IMPLEMENT ##
+        phi = (ANN_output[...,0]+ANN_output[...,1]) * torch.pow(2.,self.ANNPower1*7)  # phi = Da * (1-x1) * np.exp(x2)
+#         phi = ANN_output[...,0] * 10  # phi = Da * (1-x1) * np.exp(x2)
         
-        assert False, 'Grey Box not implemented yet'
+#         dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+#         dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
         
-        return self.BlackBox(ANN_output)
+        dx1dt = - x1 + phi
+#         dx2dt = - x2 + self.B * phi - self.beta * x2
+        dx2dt = - x2 + 11 * phi - 3 * x2
+        
+        output = torch.stack((dx1dt, dx2dt), dim=-1)
+        
+        return output
     
     def Euler(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
         
@@ -375,7 +398,7 @@ class Network(jit.ScriptModule):
         return x1_out, x2_out
     
     @jit.script_method
-    def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
 #         Da_input = Da.repeat(1,x1.size()[1])
         Da_input = Da
@@ -391,7 +414,7 @@ class Network(jit.ScriptModule):
 #         return self.integrator(x1, x2, dt, Da_input)
     
     @jit.script_method
-    def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         x1_inputs = x1.unbind(1)
         x2_inputs = x2.unbind(1)
@@ -403,8 +426,9 @@ class Network(jit.ScriptModule):
         x1_out.append(x1_inputs[0])
         x2_out.append(x2_inputs[0])
         
+        switch = len(x1_inputs) * (1-warmup)
         for j in range(len(x1_inputs)):
-            if j < warmup:
+            if torch.remainder(torch.tensor(j),torch.tensor(switch)) < 1:
                 x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
                 x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
             else:
@@ -431,11 +455,11 @@ class Network(jit.ScriptModule):
         return x1_outs, x2_outs
     
 #     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: int) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
         
         dt = time[...,1:] - time[...,:-1]
         
-        if warmup < x1.size()[1] or torch.any(x1[0]<0) or torch.any(x2[0]<0):
+        if warmup < 1 or torch.any(x1[0]<0) or torch.any(x2[0]<0):
             return self.forward_manual(x1, x2, dt, Da, warmup)
         else:
             return self.forward_full(x1, x2, dt, Da, warmup)            
@@ -499,7 +523,7 @@ class my_Model():
 #                                           warmup_steps=0,
 #                                           gamma=1.0)
         
-        self.warmup = 0.
+        self.warmup = 0.8
         
         self.alpha = 0.5
         
@@ -550,9 +574,11 @@ class my_Model():
             
             if epoch > 200:
 #                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
-                warmup = int(self.warmup * x1.size()[1])
+#                 warmup = int(self.warmup * x1.size()[1])
+                warmup = self.warmup
             else:
-                warmup = time_length
+#                 warmup = time_length
+                warmup = 1
             
             # Teacher Forcing
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
@@ -652,7 +678,8 @@ class my_Model():
 #                     warmup = int(self.warmup * x1.size()[1])
                     warmup = 0
                 else:
-                    warmup = time_length
+#                     warmup = time_length
+                    warmup = 1
 
                 x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
 
