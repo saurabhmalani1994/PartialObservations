@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from utils import CSTRDataset, Network, my_Model, progress, config, get_pars, integrate_cstr
 
 from scipy.integrate import solve_ivp
+from scipy.stats import gaussian_kde
 
 def main(config, Da=config["PAR"]["Da"]):
     
@@ -55,7 +56,7 @@ def main(config, Da=config["PAR"]["Da"]):
     plt.savefig('Figures/trainingloss_learningrate.png')
     
 #     Da_list = [0.2] * 10
-    Da_list = [0.2, 0.25, 0.28, 0.3, 0.32, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
+    Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
 #     Da_list = [0.33]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
     
@@ -65,6 +66,10 @@ def main(config, Da=config["PAR"]["Da"]):
     real_RHS_x2 = []
     real_RHS_x1_pred = []
     real_RHS_x2_pred = []
+    
+    real_RHS_x1_in = []
+    real_RHS_x2_in = []
+    
     pred_RHS_x1 = []
     pred_RHS_x2 = []
     pred_RHS_x1_pred = []
@@ -168,22 +173,28 @@ def main(config, Da=config["PAR"]["Da"]):
             return y[...,1]
 
 
-        x1_in = torch.from_numpy(dataset_test.x1_data[0][:-1]).unsqueeze(0).to(network.device)
-        x2_in = torch.from_numpy(dataset_test.x2_data[0][:-1]).unsqueeze(0).to(network.device)
+        x1_in_RHS = torch.from_numpy(dataset_test.x1_data[0][:-1]).unsqueeze(0).to(network.device)
+        x2_in_RHS = torch.from_numpy(dataset_test.x2_data[0][:-1]).unsqueeze(0).to(network.device)
         
+        real_RHS_x1_in.append(x1_in_RHS.detach().cpu().squeeze().numpy())
+        real_RHS_x2_in.append(x2_in_RHS.detach().cpu().squeeze().numpy())
+#         print(x1_in)
+#         print(x2_in)
+#         print(dataset_test.time)
+#         assert False
         
         myB, mybeta, myD = 11, 3, torch.tensor(dataset_test.Da).unsqueeze(0).to(network.device)
-        real_RHS_x1.append((-x1_in + myD * (1-x1_in) * torch.exp(x2_in)).detach().cpu().squeeze().numpy())
-        real_RHS_x2.append((-x2_in + myB * myD * (1-x1_in) * torch.exp(x2_in) - mybeta * x2_in).detach().cpu().squeeze().numpy())
+        real_RHS_x1.append((-x1_in_RHS + myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
+        real_RHS_x2.append((-x2_in_RHS + myB * myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS) - mybeta * x2_in_RHS).detach().cpu().squeeze().numpy())
         
-        ANN_output = network.network(x1_in, x2_in, myD)
+        ANN_output = network.network(x1_in_RHS, x2_in_RHS, myD)
         pred_RHS_x1.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
         pred_RHS_x2.append(ANN_output[...,1].detach().cpu().squeeze().numpy())
         
         
         if network.box == 'Grey' or network.box == 'Gray':
-            real_phi.append((myD * (1-x1_in) * torch.exp(x2_in)).detach().cpu().squeeze().numpy())
-            ANN_output = phi_network(x1_in, x2_in, myD) * torch.pow(2.,network.ANNPower1*7)
+            real_phi.append((myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
+            ANN_output = phi_network(x1_in_RHS, x2_in_RHS, myD) * torch.pow(2.,network.ANNPower1*7)
             pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
         
 #         assert False
@@ -276,30 +287,66 @@ def main(config, Da=config["PAR"]["Da"]):
     real_RHS_x1_pred = np.array(real_RHS_x1_pred).flatten()
     real_RHS_x2_pred = np.array(real_RHS_x2_pred).flatten()
     
+    real_RHS_x1_in = np.array(real_RHS_x1_in).flatten()
+    real_RHS_x2_in = np.array(real_RHS_x2_in).flatten()
+    
+    xy = np.vstack([real_RHS_x1,pred_RHS_x1])
+    z = gaussian_kde(xy)(xy)
 
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
-    ax.plot(real_RHS_x1, pred_RHS_x1,'.')
+    sc = ax.scatter(real_RHS_x1, pred_RHS_x1,c=z)
     ax.plot([np.min(real_RHS_x1),np.max(real_RHS_x1)],[np.min(real_RHS_x1),np.max(real_RHS_x1)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_1$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
     plt.yticks(fontsize=25)
     plt.xticks(fontsize=25)
+#     plt.colorbar(sc)
     fig.savefig('Figures/RHS for x1' + '.png',format='png', bbox_inches='tight')
 
+    xy = np.vstack([real_RHS_x2,pred_RHS_x2])
+    z = gaussian_kde(xy)(xy)
+    
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
-    ax.plot(real_RHS_x2, pred_RHS_x2,'.')
+    sc = ax.scatter(real_RHS_x2, pred_RHS_x2,c=z)
     ax.plot([np.min(real_RHS_x2),np.max(real_RHS_x2)],[np.min(real_RHS_x2),np.max(real_RHS_x2)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_2$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
     plt.yticks(fontsize=25)
     plt.xticks(fontsize=25)
+#     plt.colorbar(sc)
     fig.savefig('Figures/RHS for x2' + '.png',format='png', bbox_inches='tight')
+
+    ##############################
+    ##############################
     
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
-    ax.plot(real_RHS_x1_pred, pred_RHS_x1_pred,'.')
+    sc = ax.scatter(real_RHS_x1, pred_RHS_x1,c=real_RHS_x1_in)
+    ax.plot([np.min(real_RHS_x1),np.max(real_RHS_x1)],[np.min(real_RHS_x1),np.max(real_RHS_x1)],'k-')
+    ax.set_xlabel('True RHS: ' + r'$x_1$',fontsize=40)
+    ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    plt.colorbar(sc)
+    
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(111)
+    sc = ax.scatter(real_RHS_x2, pred_RHS_x2,c=real_RHS_x2_in)
+    ax.plot([np.min(real_RHS_x2),np.max(real_RHS_x2)],[np.min(real_RHS_x2),np.max(real_RHS_x2)],'k-')
+    ax.set_xlabel('True RHS: ' + r'$x_2$',fontsize=40)
+    ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
+    plt.yticks(fontsize=25)
+    plt.xticks(fontsize=25)
+    plt.colorbar(sc)
+    
+    ##############################
+    ##############################
+    
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(111)
+    ax.scatter(real_RHS_x1_pred, pred_RHS_x1_pred)
     ax.plot([np.min(real_RHS_x1_pred),np.max(real_RHS_x1_pred)],[np.min(real_RHS_x1_pred),np.max(real_RHS_x1_pred)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_1$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
@@ -309,7 +356,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
-    ax.plot(real_RHS_x2_pred, pred_RHS_x2_pred,'.')
+    ax.scatter(real_RHS_x2_pred, pred_RHS_x2_pred)
     ax.plot([np.min(real_RHS_x2_pred),np.max(real_RHS_x2_pred)],[np.min(real_RHS_x2_pred),np.max(real_RHS_x2_pred)],'k-')
     ax.set_xlabel('True RHS: ' + r'$x_2$',fontsize=40)
     ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
@@ -327,6 +374,22 @@ def main(config, Da=config["PAR"]["Da"]):
         plt.yticks(fontsize=25)
         plt.xticks(fontsize=25)
         fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+        
+        if network.parameter_knowledge == 'Trainable':
+            labels = [r'$B$',r'$\beta$']
+            x = np.arange(len(labels))
+            width = 0.35
+            
+            fig = plt.figure(figsize=(20,10))
+            ax = fig.add_subplot(111)
+            ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
+            ax.bar(x+width/2,[network.B.item()*100, network.beta.item()*100],width=width,label='Model Prediction')
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels,fontsize=30)
+            plt.yticks(fontsize=30)
+            plt.title('Model Prediction of Experimental Parameters',fontsize=25)
+            plt.legend(fontsize=30)
+            fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
 
     
     

@@ -30,9 +30,9 @@ config["DATA"]["N_VAL"] = 50
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_TIME"] = 0.1
-config["DATA"]["X2_SAMPLE_TIME"] = 0.1
-config["DATA"]["MAX_DELTA_T"] = 0.1
+config["DATA"]["X1_SAMPLE_TIME"] = 1.3
+config["DATA"]["X2_SAMPLE_TIME"] = 0.4
+config["DATA"]["MAX_DELTA_T"] = 0.4
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -41,8 +41,8 @@ config["PAR"]["beta"] = 3.
 
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
-config["TRAINING"]["LEARNING_RATE"] = 1e-2
-config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
+config["TRAINING"]["LEARNING_RATE"] = 5e-2
+config["TRAINING"]["EPOCHS"] = 4000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [64, 64]
@@ -143,7 +143,7 @@ class CSTRDataset(torch.utils.data.Dataset):
             index = count
             
             sol = integrate_cstr(tmin=0, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=full_times)
-            sol_detail = integrate_cstr(tmin=1, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(1,tmax+skip_time,int(tmax*20)), y0 = sol.y[:,0])
+            sol_detail = integrate_cstr(tmin=skip_time, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(skip_time,tmax+skip_time,int(tmax*20)), y0 = sol.y[:,0])
             
             sol_t = sol.t.round(decimals=3)
             
@@ -231,7 +231,6 @@ class Snake(nn.Module):
         
 # class Network(nn.Module):
 class Network(jit.ScriptModule):
-
     def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, device=None):
         super(Network, self).__init__()
         self.hidden_cells = hidden_cells
@@ -264,35 +263,46 @@ class Network(jit.ScriptModule):
         self.hidden_cells = hidden_cells
         
         self.layers.append(nn.Linear(3,hidden_cells[0]))
+        nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
+        nn.init.constant_(self.layers[-1].bias, 0)
         for i in range(len(hidden_cells)-1):
             self.layers.append(nn.Linear(hidden_cells[i],hidden_cells[i+1]))
+            nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
+            nn.init.constant_(self.layers[-1].bias, 0)
             
         if self.box == 'Black':
             self.output_layer = nn.Linear(hidden_cells[-1],2)
+            nn.init.xavier_normal_(self.output_layer.weight, gain=nn.init.calculate_gain('linear'))
+            nn.init.constant_(self.output_layer.bias, 0)
+            
             self.ANNPower1 = nn.Parameter(torch.tensor(-0.5), requires_grad = True)
             self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = True)
         elif self.box == 'Grey' or self.box == 'Gray':
-            self.output_layer = nn.Linear(hidden_cells[-1],2)
-            self.ANNPower1 = nn.Parameter(torch.tensor(0.), requires_grad = True)
+            self.output_layer = nn.Linear(hidden_cells[-1],1)
+            nn.init.xavier_normal_(self.output_layer.weight, gain=nn.init.calculate_gain('linear'))
+            nn.init.constant_(self.output_layer.bias, 0)
+            
+            self.ANNPower1 = nn.Parameter(torch.tensor(-0.08), requires_grad = True)
             self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = False)
         else:
             assert False, 'No Box of this color'
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
-#         self.activation = Snake()
+        #         self.activation = Snake()
+        #         self.activation = nn.Mish()
         self.activation = nn.SiLU()
-#         self.activation = nn.Tanh()
-#         self.activation = nn.SELU()
+        #         self.activation = nn.Tanh()
+        #         self.activation = nn.SELU()
         
         self.sigmoid = nn.Sigmoid()
         
         if self.parameter_knowledge == 'Fixed' or self.box == 'Black':
-            self.B = nn.Parameter(torch.tensor(B), requires_grad = False)
-            self.beta = nn.Parameter(torch.tensor(beta), requires_grad = False)
+            self.B = nn.Parameter(torch.tensor(B/100), requires_grad = False)
+            self.beta = nn.Parameter(torch.tensor(beta/100), requires_grad = False)
         elif self.parameter_knowledge == 'Trainable':
-            self.B = nn.Parameter(torch.tensor(7), requires_grad = True)
-            self.beta = nn.Parameter(torch.tensor(7), requires_grad = True)
+            self.B = nn.Parameter(torch.tensor(7./100), requires_grad = True)
+            self.beta = nn.Parameter(torch.tensor(7./100), requires_grad = True)
         else:
             assert False ,'Tell me whether or not to train the parameters'
         
@@ -320,8 +330,8 @@ class Network(jit.ScriptModule):
     
     @jit.script_method
     def BlackBox(self, ANN_output: Tensor) -> Tensor:
-#         dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
-#         dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
+        #         dx1dt = ANN_output[...,0] * (2.0 + 0.5) / self.hidden_cells[-1] - 0.5
+        #         dx2dt = ANN_output[...,1] * (20. + 5.) / self.hidden_cells[-1] - 5.
         
         dx1dt = ANN_output[...,0] * torch.pow(2.,self.ANNPower1*7)
         dx2dt = ANN_output[...,1] * torch.pow(2.,self.ANNPower2*7)
@@ -333,15 +343,15 @@ class Network(jit.ScriptModule):
     @jit.script_method
     def GreyBox(self, x1: Tensor, x2: Tensor, ANN_output: Tensor) -> Tensor:
         ## TO IMPLEMENT ##
-        phi = (ANN_output[...,0]+ANN_output[...,1]) * torch.pow(2.,self.ANNPower1*7)  # phi = Da * (1-x1) * np.exp(x2)
-#         phi = ANN_output[...,0] * 10  # phi = Da * (1-x1) * np.exp(x2)
-        
-#         dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
-#         dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+        phi = ANN_output[...,0] * torch.pow(2.,self.ANNPower1*7)  # phi = Da * (1-x1) * np.exp(x2)
+        #         phi = ANN_output[...,0] * 10  # phi = Da * (1-x1) * np.exp(x2)
+
+        #         dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
+        #         dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
         
         dx1dt = - x1 + phi
-#         dx2dt = - x2 + self.B * phi - self.beta * x2
-        dx2dt = - x2 + 11 * phi - 3 * x2
+        dx2dt = - x2 + (self.B*100) * phi - (self.beta*100) * x2
+        #         dx2dt = - x2 + 11 * phi - 3 * x2
         
         output = torch.stack((dx1dt, dx2dt), dim=-1)
         
@@ -368,8 +378,8 @@ class Network(jit.ScriptModule):
         x1_out = x1 + (dt/2) * (k1[...,0] + k2[...,0])
         x2_out = x2 + (dt/2) * (k1[...,1] + k2[...,1])
     
-#         x1_out = torch.clip(x1_out, min = 0, max = self.x1max*1000)
-#         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
+        #         x1_out = torch.clip(x1_out, min = 0, max = self.x1max*1000)
+        #         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
         return x1_out, x2_out
     
     def RK4(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
@@ -392,15 +402,15 @@ class Network(jit.ScriptModule):
         x1_out = x1 + (dt/6) * (k1[...,0] + 2*k2[...,0] + 2*k3[...,0] + k4[...,0])
         x2_out = x2 + (dt/6) * (k1[...,1] + 2*k2[...,1] + 2*k3[...,1] + k4[...,1])
     
-#         x1_out = torch.clip(x1_out, min = 0, max = self.x1max*1000)
-#         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
+        #         x1_out = torch.clip(x1_out, min = 0, max = self.x1max*1000)
+        #         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
 
         return x1_out, x2_out
     
     @jit.script_method
     def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
-#         Da_input = Da.repeat(1,x1.size()[1])
+        #         Da_input = Da.repeat(1,x1.size()[1])
         Da_input = Da
     
         if self.integrator == 'Euler':
@@ -411,7 +421,7 @@ class Network(jit.ScriptModule):
             return self.RK2(x1, x2, dt, Da_input)
         else:
             assert False, 'Specify Valid Integrator'
-#         return self.integrator(x1, x2, dt, Da_input)
+        #         return self.integrator(x1, x2, dt, Da_input)
     
     @jit.script_method
     def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
@@ -464,6 +474,24 @@ class Network(jit.ScriptModule):
         else:
             return self.forward_full(x1, x2, dt, Da, warmup)            
 
+class my_Loss(nn.Module):
+    def __init__(self, reduction='mean'):
+        super(my_Loss, self).__init__()
+        self.reduction = reduction
+        
+    def forward(self, input, target):
+        count = torch.sum((input>1e-10)*1,dim=1)
+
+        output = (input - target) ** 2
+        
+        if self.reduction == 'mean':
+            return torch.mean(torch.sum(output,dim=1) / count)
+        elif self.reduction == 'sum':
+            return torch.sum(output)
+        else:
+            assert False, 'invalid reduction'
+        
+        
 class my_Model():
     def __init__(self, dataloader_train, dataloader_val, network, learning_rate=0.05, device=None):
         if torch.cuda.is_available() and device is None:
@@ -477,7 +505,9 @@ class my_Model():
 
         print('Using:', self.device)
         
-        self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"] / config["DATA"]["X2_SAMPLE_TIME"]
+#         self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"]
+#         self.x2_loss_mult = config["DATA"]["X2_SAMPLE_TIME"]
+        self.x1_loss_mult = 1
         self.x2_loss_mult = 1
 
         self.net = network.to(self.device)
@@ -501,8 +531,11 @@ class my_Model():
         
         self.optimizer = torch.optim.AdamW(
             self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
+#         self.optimizer = torch.optim.Adam(
+#             self.net.parameters(), lr=self.lr)
 
-        self.criterion = torch.nn.MSELoss(reduction='mean').to(self.device)
+#         self.criterion = torch.nn.MSELoss(reduction='mean').to(self.device)
+        self.criterion = my_Loss(reduction='mean')
 
         self.train_loss = []
         self.val_loss = []
@@ -523,7 +556,7 @@ class my_Model():
 #                                           warmup_steps=0,
 #                                           gamma=1.0)
         
-        self.warmup = 0.8
+        self.warmup = 0.0
         
         self.alpha = 0.5
         
@@ -536,9 +569,10 @@ class my_Model():
 #                                                   min_lr=0.001,
 #                                                   warmup_steps=0,
 #                                                   gamma=1.0)
+        self.epoch_shift = 200
 
 
-        self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-200))
+        self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
 
 #         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.total_steps,
 #                                                             final_div_factor=1e2,
@@ -555,9 +589,11 @@ class my_Model():
         for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
             self.optimizer.zero_grad()
             
-            if epoch == 200:
+            if epoch == self.epoch_shift:
                 self.optimizer = torch.optim.AdamW(
-                            self.net.parameters(), lr=self.lr, amsgrad=True)
+                            self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
+#                 self.optimizer = torch.optim.Adam(
+#                             self.net.parameters(), lr=self.lr)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
                 self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-2, total_steps=self.total_steps,
@@ -572,7 +608,7 @@ class my_Model():
             teacher_forcing_indices = indices[int(batch_size*self.autoreg_prop):]
 
             
-            if epoch > 200:
+            if epoch > self.epoch_shift:
 #                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
 #                 warmup = int(self.warmup * x1.size()[1])
                 warmup = self.warmup
@@ -587,9 +623,9 @@ class my_Model():
                                             Da.to(self.device), time_length)
             
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
-            x2_norm = (x2out - self.x2min) / (self.x2max - self.x2min)
+            x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
             x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
-            x2_hat_norm = (x2out_hat - self.x2min) / (self.x2max - self.x2min)
+            x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
 
             loss_tf = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
@@ -606,9 +642,9 @@ class my_Model():
                                             Da.to(self.device), warmup)
 
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
-            x2_norm = (x2out - self.x2min) / (self.x2max - self.x2min)
+            x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
             x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
-            x2_hat_norm = (x2out_hat - self.x2min) / (self.x2max - self.x2min)
+            x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
     
             loss_autoreg = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
@@ -619,7 +655,7 @@ class my_Model():
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
                     ) * self.x1_loss_mult / 2
             
-            loss = torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha)
+            loss = torch.exp(torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha))
             
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
@@ -628,7 +664,7 @@ class my_Model():
 
             
             # Use for 1-Cycle
-            if epoch >= 200:
+            if epoch >= self.epoch_shift:
                 self.scheduler.step()
                 self.lr_epoch.append(epoch + cnt / iters)
                 self.lr_track.append(self.scheduler.get_last_lr())
@@ -643,8 +679,8 @@ class my_Model():
 #                 self.lr_epoch.append(epoch + cnt / iters)
 #                 self.lr_track.append(self.scheduler_first.get_lr())
             
-            sum_loss += torch.exp(loss).detach().cpu().numpy()
-#             sum_loss += loss.detach().cpu().numpy()
+#             sum_loss += torch.exp(loss).detach().cpu().numpy()
+            sum_loss += loss.detach().cpu().numpy()
             cnt += 1
         
 #         if epoch > 2560:
@@ -653,7 +689,7 @@ class my_Model():
 #             self.lr_track.append(self.scheduler_second._last_lr)
         
 #         Use for lr reduce on plateau
-        if epoch < 200:# or epoch <= 1:
+        if epoch < self.epoch_shift:# or epoch <= 1:
             self.scheduler.step(sum_loss / cnt)
             self.lr_epoch.append(epoch)
             self.lr_track.append(self.scheduler._last_lr)
@@ -679,15 +715,15 @@ class my_Model():
                     warmup = 0
                 else:
 #                     warmup = time_length
-                    warmup = 1
+                    warmup = 1.
 
                 x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
 
 
                 x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
-                x2_norm = (x2out - self.x2min) / (self.x2max - self.x2min)
+                x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
                 x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
-                x2_hat_norm = (x2out_hat - self.x2min) / (self.x2max - self.x2min)
+                x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
 
                 loss_x2 = self.criterion(
                         torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
