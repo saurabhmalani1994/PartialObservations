@@ -17,12 +17,13 @@ utils.py contains ALL the functions
             LOSS is only computed for the time points where real data is present, if real data is NOT present, it compares 0 against 0 i.e. no loss. I use a custom loss function my_Loss that when taking the mean loss over all data points only divides by the number of data points that have real data, so that the number of '0 vs 0' data points does not artificially bring down the mean loss. Doing so keeps both variables equivalently weighted: if x1 has 10 data points and x2 and 100, the AVERAGE of the loss at 10 x1 data points is added to the AVERAGE of the loss at 100 x2 data points for the total loss. Additionally, both variables are first NORMALIZED between 0 and 1 before loss is computed to further ensure both variables are equivalently weighted (otherwise x2 is about an order of magnitude larger than x1). self.x1_loss_mult and self.x2_loss_mult can allow us to favor one variable over the other if needed, currently both are set to 1.
             
             
-=========================================================================================================
+============================
             
             
 To Train Model and Create Plots:
 
 run train_model.py
+
 run make_plots.py
 
 Figures will be created in Figures folder
