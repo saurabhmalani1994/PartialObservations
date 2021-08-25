@@ -57,7 +57,7 @@ def main(config, Da=config["PAR"]["Da"]):
     
 #     Da_list = [0.2] * 10
     Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
-#     Da_list = [0.33]
+#     Da_list = [0.33, 0.36]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
     
     index = 0
@@ -87,15 +87,15 @@ def main(config, Da=config["PAR"]["Da"]):
                                Da=Da,
                                B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
-                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*5,
+                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*5,
                                 skip_time=config["DATA"]["SKIP_TIME"],
                                beta=config["PAR"]["beta"])
 
         
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[:-1][dataset_test.x1[0]>0], dataset_test.x1[0][dataset_test.x1[0]>0], '.-')
+        ax.plot(dataset_test.time[0][:-1][dataset_test.x1[0]>0], dataset_test.x1[0][dataset_test.x1[0]>0], '.-')
         ax.set_xlabel('t')
         ax.set_ylabel('X2')
         plt.savefig(config["DATA"]["PATH"]+'test_data.pdf')
@@ -104,7 +104,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[:-1][dataset_test.x2[0]>0], dataset_test.x2[0][dataset_test.x2[0]>0], '.-')
+        ax.plot(dataset_test.time[0][:-1][dataset_test.x2[0]>0], dataset_test.x2[0][dataset_test.x2[0]>0], '.-')
         ax.set_xlabel('t')
         ax.set_ylabel('X1')
         plt.show()
@@ -175,9 +175,12 @@ def main(config, Da=config["PAR"]["Da"]):
 
         x1_in_RHS = torch.from_numpy(dataset_test.x1_data[0][:-1]).unsqueeze(0).to(network.device)
         x2_in_RHS = torch.from_numpy(dataset_test.x2_data[0][:-1]).unsqueeze(0).to(network.device)
+
+        
         
         real_RHS_x1_in.append(x1_in_RHS.detach().cpu().squeeze().numpy())
         real_RHS_x2_in.append(x2_in_RHS.detach().cpu().squeeze().numpy())
+
 #         print(x1_in)
 #         print(x2_in)
 #         print(dataset_test.time)
@@ -202,8 +205,8 @@ def main(config, Da=config["PAR"]["Da"]):
         
         y_in = np.stack((dataset_test.x1[0][0],dataset_test.x2[0][0]),axis=-1)
         
-        solver_time = np.linspace(0,dataset_test.time[-1],1000)
-        sol = solve_ivp(my_ode,[0,dataset_test.time[-1]], y_in, args=(dataset_test.Da,), t_eval = solver_time,
+        solver_time = np.linspace(0,dataset_test.time[0][-1],1000)
+        sol = solve_ivp(my_ode,[0,dataset_test.time[0][-1]], y_in, args=(dataset_test.Da,), t_eval = solver_time,
                     rtol=1e-5, atol=1e-8)
         
         x1_out = sol.y[0,:]
@@ -217,7 +220,7 @@ def main(config, Da=config["PAR"]["Da"]):
         
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x1_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
@@ -230,7 +233,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
 #         ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'k',label='true trajectory',linewidth=3)
         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x2_out,'x-',label='predicted',linewidth=3)
@@ -246,13 +249,13 @@ def main(config, Da=config["PAR"]["Da"]):
 
         x1_in = torch.from_numpy(dataset_test.x1[0]).unsqueeze(0).to(network.device)
         x2_in = torch.from_numpy(dataset_test.x2[0]).unsqueeze(0).to(network.device)
-        x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time).unsqueeze(0).to(network.device),Da=torch.tensor(dataset_test.Da).unsqueeze(0).to(network.device))
+        x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time[0]).unsqueeze(0).to(network.device),Da=torch.tensor(dataset_test.Da).unsqueeze(0).to(network.device))
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.plot(dataset_test.time[0][1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_1$',fontsize=40)
         plt.yticks(fontsize=25)
@@ -264,9 +267,9 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.plot(dataset_test.time[0][1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_2$',fontsize=40)
         plt.yticks(fontsize=25)
@@ -277,22 +280,22 @@ def main(config, Da=config["PAR"]["Da"]):
         
 #         index += 1
         
-
-    real_RHS_x1 = np.array(real_RHS_x1).flatten()
-    real_RHS_x2 = np.array(real_RHS_x2).flatten()
-    pred_RHS_x1 = np.array(pred_RHS_x1).flatten()
-    pred_RHS_x2 = np.array(pred_RHS_x2).flatten()
-    pred_RHS_x1_pred = np.array(pred_RHS_x1_pred).flatten()
-    pred_RHS_x2_pred = np.array(pred_RHS_x2_pred).flatten()
-    real_RHS_x1_pred = np.array(real_RHS_x1_pred).flatten()
-    real_RHS_x2_pred = np.array(real_RHS_x2_pred).flatten()
+    real_RHS_x1 = np.concatenate((np.array(real_RHS_x1))).flatten()
+    real_RHS_x2 = np.concatenate((np.array(real_RHS_x2))).flatten()
+    pred_RHS_x1 = np.concatenate((np.array(pred_RHS_x1))).flatten()
+    pred_RHS_x2 = np.concatenate((np.array(pred_RHS_x2))).flatten()
+    pred_RHS_x1_pred = np.concatenate((np.array(pred_RHS_x1_pred))).flatten()
+    pred_RHS_x2_pred = np.concatenate((np.array(pred_RHS_x2_pred))).flatten()
+    real_RHS_x1_pred = np.concatenate((np.array(real_RHS_x1_pred))).flatten()
+    real_RHS_x2_pred = np.concatenate((np.array(real_RHS_x2_pred))).flatten()
     
-    real_RHS_x1_in = np.array(real_RHS_x1_in).flatten()
-    real_RHS_x2_in = np.array(real_RHS_x2_in).flatten()
+    real_RHS_x1_in = np.concatenate((np.array(real_RHS_x1_in))).flatten()
+    real_RHS_x2_in = np.concatenate((np.array(real_RHS_x2_in))).flatten()
     
     xy = np.vstack([real_RHS_x1,pred_RHS_x1])
+    xy.astype(float)
     z = gaussian_kde(xy)(xy)
-
+    
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
     sc = ax.scatter(real_RHS_x1, pred_RHS_x1,c=z)
@@ -419,8 +422,8 @@ def main(config, Da=config["PAR"]["Da"]):
 
     for i in range(len(Da)):
         dt = config["DATA"]["TMAX"] / config["DATA"]["L_TRAJECTORIES"]
-        tmax = 100
-        tmin = 80
+        tmax = 150
+        tmin = 120
 
         index = count
 

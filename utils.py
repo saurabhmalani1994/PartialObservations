@@ -25,14 +25,14 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
 config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 200
-config["DATA"]["N_VAL"] = 50
+config["DATA"]["N_TRAIN"] = 10
+config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_TIME"] = 1.3
-config["DATA"]["X2_SAMPLE_TIME"] = 0.4
-config["DATA"]["MAX_DELTA_T"] = 0.4
+config["DATA"]["X1_SAMPLE_NUM"] = 20
+config["DATA"]["X2_SAMPLE_NUM"] = 20
+config["DATA"]["MAX_DELTA_T"] = 0.1
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -106,7 +106,7 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=
 class CSTRDataset(torch.utils.data.Dataset):
     """Dataset of transients obtained from a Brusselator."""
 
-    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_time=0.1, x2_sample_time=0.1, skip_time=1):
+    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True):
         self.ids = np.arange(n_train)
         self.x1 = []
         self.x1_out = []
@@ -116,6 +116,7 @@ class CSTRDataset(torch.utils.data.Dataset):
         self.x2_out = []
         self.x2_data = []
         self.x2_data_detail = []
+        self.time = []
 
         
         if n_train == 1:
@@ -132,17 +133,58 @@ class CSTRDataset(torch.utils.data.Dataset):
         
         count = 0
         
-        x1_sampling_times = np.arange(start=skip_time, stop=tmax+skip_time+1e-10, step=x1_sample_time).round(decimals=3)
-        x2_sampling_times = np.arange(start=skip_time, stop=tmax+skip_time+1e-10, step=x2_sample_time).round(decimals=3)
+        x1_sampling_times_arr = []
+        x2_sampling_times_arr = []
+        full_times_arr = []
+        max_arr_length = 0
         
-        solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
-        full_times = self.insert_intermediate(solver_sampling_times, maxdt)
+        for i in range(n_train):
+            if reg_time == 'True':
+                x1_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x1_sample_num, endpoint=True)
+                x2_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x2_sample_num, endpoint=True)
+                solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
+                full_times = self.insert_intermediate(solver_sampling_times, maxdt)
+
+                x1_sampling_times_arr.append(x1_sampling_times)
+                x2_sampling_times_arr.append(x2_sampling_times)
+                full_times_arr.append(full_times)
+                
+            else:
+                x1_sampling_times = np.array([skip_time])
+                x2_sampling_times = np.array([skip_time])
+
+                while len(x1_sampling_times) < x1_sample_num:
+                    x1_sampling_times = np.append(x1_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
+                    x1_sampling_times = np.sort(np.unique(x1_sampling_times))
+
+                while len(x2_sampling_times) < x2_sample_num:
+                    x2_sampling_times = np.append(x2_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
+                    x2_sampling_times = np.sort(np.unique(x2_sampling_times))
+
+                x2_sampling_times = x1_sampling_times
+
+                solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
+                full_times = self.insert_intermediate(solver_sampling_times, maxdt)
+
+                x1_sampling_times_arr.append(x1_sampling_times)
+                x2_sampling_times_arr.append(x2_sampling_times)
+                full_times_arr.append(full_times)
+
+                if full_times.size > max_arr_length:
+                    max_arr_length = full_times.size
+                
+        for i in range(n_train):
+            while len(full_times_arr[i]) < max_arr_length:
+                full_times_arr[i] = np.append(full_times_arr[i], np.array([tmax+skip_time+0.1]).round(decimals=3))
+            self.time.append(full_times_arr[i] - full_times_arr[i][0])
         
         for _ in tqdm(range(n_train), leave=True, position=0):
 #             index = int(np.floor(count/10))
             index = count
-            
-            sol = integrate_cstr(tmin=0, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=full_times)
+            x1_sampling_times = x1_sampling_times_arr[index]
+            x2_sampling_times = x2_sampling_times_arr[index]
+            full_times = full_times_arr[index]
+            sol = integrate_cstr(tmin=0, tmax=tmax+skip_time+0.1, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.unique(full_times))
             sol_detail = integrate_cstr(tmin=skip_time, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(skip_time,tmax+skip_time,int(tmax*20)), y0 = sol.y[:,0])
             
             sol_t = sol.t.round(decimals=3)
@@ -165,10 +207,7 @@ class CSTRDataset(torch.utils.data.Dataset):
             self.x1_data_detail.append(sol_detail.y[0, :].copy())
             self.x2_data_detail.append(sol_detail.y[1, :].copy())
             
-            
-            
             count += 1
-        self.time = full_times - full_times[0] # Time array
         self.solver_time = solver_sampling_times - solver_sampling_times[0]
         self.time_detail = sol_detail.t - sol_detail.t[0]
         
@@ -191,7 +230,7 @@ class CSTRDataset(torch.utils.data.Dataset):
         x1_out = self.x1_out[self.ids[index]]
         x2 = self.x2[self.ids[index]]
         x2_out = self.x2_out[self.ids[index]]
-        time = self.time
+        time = self.time[self.ids[index]]
         Da = self.Da[self.ids[index]]
         return torch.tensor(x1, dtype=torch.float64), \
             torch.tensor(x1_out, dtype=torch.float64), \

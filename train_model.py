@@ -23,28 +23,31 @@ def main(config):
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
-                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"])
+                           beta=config["PAR"]["beta"],
+                               reg_time=True)
     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
                               config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
-                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"], random=True)
+                           beta=config["PAR"]["beta"], random=True,
+                             reg_time=True)
     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
                            config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
                            B=config["PAR"]["B"],
                             maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_time=config["DATA"]["X1_SAMPLE_TIME"],
-                                x2_sample_time=config["DATA"]["X2_SAMPLE_TIME"],
+                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"])
+                           beta=config["PAR"]["beta"],
+                              reg_time=True)
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],
