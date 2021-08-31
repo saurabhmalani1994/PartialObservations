@@ -27,7 +27,7 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"],
-                               reg_time=True)
+                               reg_time=config["DATA"]["REG_TIME"])
     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
                               config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
@@ -37,7 +37,7 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"], random=True,
-                             reg_time=True)
+                             reg_time=config["DATA"]["REG_TIME"])
     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
                            config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
@@ -47,7 +47,7 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"],
-                              reg_time=True)
+                              reg_time=config["DATA"]["REG_TIME"])
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],

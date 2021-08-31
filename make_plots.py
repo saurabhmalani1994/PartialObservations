@@ -57,7 +57,7 @@ def main(config, Da=config["PAR"]["Da"]):
     
 #     Da_list = [0.2] * 10
     Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
-#     Da_list = [0.33, 0.36]
+#     Da_list = [0.33]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
     
     index = 0
@@ -90,7 +90,8 @@ def main(config, Da=config["PAR"]["Da"]):
                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*5,
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*5,
                                 skip_time=config["DATA"]["SKIP_TIME"],
-                               beta=config["PAR"]["beta"])
+                               beta=config["PAR"]["beta"],
+                               reg_time=config["DATA"]["REG_TIME"])
 
         
         fig = plt.figure()

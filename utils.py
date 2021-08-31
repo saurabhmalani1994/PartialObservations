@@ -30,9 +30,10 @@ config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_NUM"] = 20
-config["DATA"]["X2_SAMPLE_NUM"] = 20
+config["DATA"]["X1_SAMPLE_NUM"] = 12
+config["DATA"]["X2_SAMPLE_NUM"] = 12
 config["DATA"]["MAX_DELTA_T"] = 0.1
+config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -139,15 +140,11 @@ class CSTRDataset(torch.utils.data.Dataset):
         max_arr_length = 0
         
         for i in range(n_train):
-            if reg_time == 'True':
-                x1_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x1_sample_num, endpoint=True)
-                x2_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x2_sample_num, endpoint=True)
+            if reg_time:
+                x1_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x1_sample_num+1, endpoint=True).round(decimals=3)
+                x2_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x2_sample_num+1, endpoint=True).round(decimals=3)
                 solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
-
-                x1_sampling_times_arr.append(x1_sampling_times)
-                x2_sampling_times_arr.append(x2_sampling_times)
-                full_times_arr.append(full_times)
                 
             else:
                 x1_sampling_times = np.array([skip_time])
@@ -160,18 +157,18 @@ class CSTRDataset(torch.utils.data.Dataset):
                 while len(x2_sampling_times) < x2_sample_num:
                     x2_sampling_times = np.append(x2_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
                     x2_sampling_times = np.sort(np.unique(x2_sampling_times))
-
-                x2_sampling_times = x1_sampling_times
-
+                
+#                 x1_sampling_times = x2_sampling_times
+                
                 solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
 
-                x1_sampling_times_arr.append(x1_sampling_times)
-                x2_sampling_times_arr.append(x2_sampling_times)
-                full_times_arr.append(full_times)
+            x1_sampling_times_arr.append(x1_sampling_times)
+            x2_sampling_times_arr.append(x2_sampling_times)
+            full_times_arr.append(full_times)
 
-                if full_times.size > max_arr_length:
-                    max_arr_length = full_times.size
+            if full_times.size > max_arr_length:
+                max_arr_length = full_times.size
                 
         for i in range(n_train):
             while len(full_times_arr[i]) < max_arr_length:
@@ -465,6 +462,8 @@ class Network(jit.ScriptModule):
     @jit.script_method
     def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
+        # x1 = (N, T, 1) N-batches, T-time, dim 1
+        
         x1_inputs = x1.unbind(1)
         x2_inputs = x2.unbind(1)
         dt_inputs = dt.unbind(1)
