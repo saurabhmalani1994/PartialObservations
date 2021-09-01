@@ -27,7 +27,8 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"],
-                               reg_time=config["DATA"]["REG_TIME"])
+                               reg_time=config["DATA"]["REG_TIME"],
+                               inference=config["DATA"]["INIT_AVAILABLE"])
     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
                               config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
@@ -37,7 +38,8 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"], random=True,
-                             reg_time=config["DATA"]["REG_TIME"])
+                             reg_time=config["DATA"]["REG_TIME"],
+                               inference=True)
     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
                            config["DATA"]["L_TRAJECTORIES"], 
                            Da=config["PAR"]["Da"],
@@ -47,11 +49,12 @@ def main(config):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
                                 skip_time=config["DATA"]["SKIP_TIME"],
                            beta=config["PAR"]["beta"],
-                              reg_time=config["DATA"]["REG_TIME"])
+                              reg_time=config["DATA"]["REG_TIME"],
+                               inference=True)
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],
-                                  shuffle=True, num_workers=1, pin_memory=True)
+                                  shuffle=False, num_workers=1, pin_memory=True)
     dataloader_val = DataLoader(dataset_val, batch_size=config["TRAINING"]["BATCH_SIZE"],
                                 shuffle=False, num_workers=1, pin_memory=True)
 
@@ -87,7 +90,8 @@ def main(config):
                       B=config["PAR"]["B"],
                       beta=config["PAR"]["beta"],
                       Da=config["PAR"]["Da"],
-                      minmaxes=minmaxes
+                      minmaxes=minmaxes,
+                      batch=config["DATA"]["N_TRAIN"]
                      )
     print(network)
     # Move network to corresponding device (cpu or gpu)
@@ -105,6 +109,17 @@ def main(config):
                         leave=True, position=0, desc=progress(0, 0))
     train_loss_list = []
     val_loss_list = []
+    
+    print('True initial x1/x2')
+    x1_init = []
+    x2_init = []
+    for i in range(len(dataset_train.x1_data)):
+        x1_init.append(dataset_train.x1_data[i][0])
+        x2_init.append(dataset_train.x2_data[i][0])
+    print(np.array(x1_init))
+    print(np.array(x2_init))
+#     assert False
+    
     for epoch in progress_bar:
         train_loss = model.train(epoch)
         val_loss = model.validate(epoch)

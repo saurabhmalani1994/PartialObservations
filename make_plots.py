@@ -91,7 +91,8 @@ def main(config, Da=config["PAR"]["Da"]):
                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*5,
                                 skip_time=config["DATA"]["SKIP_TIME"],
                                beta=config["PAR"]["beta"],
-                               reg_time=config["DATA"]["REG_TIME"])
+                               reg_time=config["DATA"]["REG_TIME"],
+                                  inference=True)
 
         
         fig = plt.figure()
@@ -117,7 +118,8 @@ def main(config, Da=config["PAR"]["Da"]):
                               B=config["PAR"]["B"],
                               beta=config["PAR"]["beta"],
                               Da=config["PAR"]["Da"],
-                              minmaxes=minmaxes
+                              minmaxes=minmaxes,
+                      batch=config["DATA"]["N_TRAIN"]
                              )
         device = None
         if torch.cuda.is_available() and device is None:
@@ -132,7 +134,23 @@ def main(config, Da=config["PAR"]["Da"]):
                     str(len(network.hidden_cells))+'_'+str(network.hidden_cells[0])+'.net'
 
         print(filename)
-        network.load_state_dict(torch.load(filename, map_location=torch.device(device)))
+        
+#         omit_dict = {"initial_x1": "initial_x1", "initial_x2": "initial_x2"}
+#         model_dict = network.state_dict()
+#         model_dict.pop("initial_x1")
+#         model_dict.pop("initial_x2")
+        
+#         chosen_dict = {k: v for k, v in omit_dict.items() if k in model_dict}
+#         chosen_dict = {k: v for k, v in model_dict.items() if k not in omit_dict}
+        
+#         model_dict.update(chosen_dict)
+        state_dict = torch.load(filename, map_location=torch.device(device))
+        state_dict.pop('initial_x1')
+        state_dict.pop('initial_x2')
+#         network.load_state_dict(torch.load(filename, map_location=torch.device(device)))
+        network.load_state_dict(state_dict, strict=False)
+        network.initial_x1 = torch.tensor(dataset_test.x1[0][0]/2).unsqueeze(0).unsqueeze(0)
+        network.initial_x2 = torch.tensor(dataset_test.x2[0][0]/10).unsqueeze(0).unsqueeze(0)
 
         print(network)
         network.to(device)
@@ -221,7 +239,7 @@ def main(config, Da=config["PAR"]["Da"]):
         
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x1_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
@@ -234,7 +252,7 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
 #         ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'k',label='true trajectory',linewidth=3)
         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x2_out,'x-',label='predicted',linewidth=3)
@@ -254,9 +272,9 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][1:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[0][1:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.plot(dataset_test.time[0][:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_1$',fontsize=40)
         plt.yticks(fontsize=25)
@@ -268,9 +286,9 @@ def main(config, Da=config["PAR"]["Da"]):
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(dataset_test.time[0][:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[0][1:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+        ax.plot(dataset_test.time[0][:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_2$',fontsize=40)
         plt.yticks(fontsize=25)

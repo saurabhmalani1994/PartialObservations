@@ -25,7 +25,7 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
 config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 10
+config["DATA"]["N_TRAIN"] = 83
 config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
@@ -34,6 +34,7 @@ config["DATA"]["X1_SAMPLE_NUM"] = 12
 config["DATA"]["X2_SAMPLE_NUM"] = 12
 config["DATA"]["MAX_DELTA_T"] = 0.1
 config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
+config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -43,7 +44,7 @@ config["PAR"]["beta"] = 3.
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
 config["TRAINING"]["LEARNING_RATE"] = 5e-2
-config["TRAINING"]["EPOCHS"] = 4000 # 1000 # 1259 # 2539 # 5260
+config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [64, 64]
@@ -107,7 +108,7 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=
 class CSTRDataset(torch.utils.data.Dataset):
     """Dataset of transients obtained from a Brusselator."""
 
-    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True):
+    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True, inference=False):
         self.ids = np.arange(n_train)
         self.x1 = []
         self.x1_out = []
@@ -124,14 +125,14 @@ class CSTRDataset(torch.utils.data.Dataset):
             self.Da = np.array([Da])
         else:
             if random:
-                self.Da = np.random.uniform(0.2,0.5,n_train)   
+                self.Da_base = np.random.uniform(0.2,0.5,10)   
 #                 self.Da = np.concatenate((np.random.uniform(0.2,0.22,int(0.2*n_train)),np.random.uniform(0.22,0.5,n_train-int(0.2*n_train))))
 #                 self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
-                self.Da = np.linspace(0.2,0.5,n_train)
+                self.Da_base = np.linspace(0.2,0.5,10)
 #                 self.Da = np.concatenate((np.linspace(0.2,0.22,int(0.2*n_train)),np.linspace(0.22,0.5,n_train-int(0.2*n_train))))
 #                 self.Da = np.linspace(0.33,0.33,n_train)   
-        
+            self.Da = np.random.choice(self.Da_base, n_train, replace=True)
         count = 0
         
         x1_sampling_times_arr = []
@@ -147,8 +148,12 @@ class CSTRDataset(torch.utils.data.Dataset):
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
                 
             else:
-                x1_sampling_times = np.array([skip_time])
-                x2_sampling_times = np.array([skip_time])
+                if inference:
+                    x1_sampling_times = np.array([skip_time])
+                    x2_sampling_times = np.array([skip_time])
+                else:
+                    x1_sampling_times = np.array([])
+                    x2_sampling_times = np.array([])
 
                 while len(x1_sampling_times) < x1_sample_num:
                     x1_sampling_times = np.append(x1_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
@@ -160,8 +165,9 @@ class CSTRDataset(torch.utils.data.Dataset):
                 
 #                 x1_sampling_times = x2_sampling_times
                 
-                solver_sampling_times = np.sort(np.unique(np.concatenate((x1_sampling_times, x2_sampling_times))))
+                solver_sampling_times = np.sort(np.unique(np.concatenate((np.array([skip_time]), x1_sampling_times, x2_sampling_times))))
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
+
 
             x1_sampling_times_arr.append(x1_sampling_times)
             x2_sampling_times_arr.append(x2_sampling_times)
@@ -192,11 +198,11 @@ class CSTRDataset(torch.utils.data.Dataset):
             x1[np.in1d(full_times,x1_sampling_times)] = sol.y[0, np.in1d(sol_t,x1_sampling_times)]
             x2[np.in1d(full_times,x2_sampling_times)] = sol.y[1, np.in1d(sol_t,x2_sampling_times)]
             
-            self.x1.append(x1[:-1])  # x1 at time t
-            self.x1_out.append(x1[1:])  # x1 at t
+            self.x1.append(x1[:-1])  # x1 at time t except last
+            self.x1_out.append(x1[:])  # x1 at all times
             
-            self.x2.append(x2[:-1])  # x2 at t
-            self.x2_out.append(x2[1:])  # x2 at t
+            self.x2.append(x2[:-1])  # x2 at t except last
+            self.x2_out.append(x2[:])  # x2 at all times
             
             self.x1_data.append(sol.y[0, :].copy())
             self.x2_data.append(sol.y[1, :].copy())
@@ -267,7 +273,7 @@ class Snake(nn.Module):
         
 # class Network(nn.Module):
 class Network(jit.ScriptModule):
-    def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, device=None):
+    def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, batch=50, device=None):
         super(Network, self).__init__()
         self.hidden_cells = hidden_cells
         
@@ -322,6 +328,10 @@ class Network(jit.ScriptModule):
             self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = False)
         else:
             assert False, 'No Box of this color'
+            
+        self.initial_x1 = nn.Parameter(torch.zeros(batch,1), requires_grad = False)
+        self.initial_x2 = nn.Parameter(torch.zeros(batch,1), requires_grad = False)
+        self.is_initialized = False
 
         self.x1min, self.x1max, self.x2min, self.x2max = minmaxes
     
@@ -393,6 +403,7 @@ class Network(jit.ScriptModule):
         
         return output
     
+    @jit.script_method
     def Euler(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
         
         ANN_output = self.network(x1, x2, Da)
@@ -402,6 +413,7 @@ class Network(jit.ScriptModule):
         
         return x1_out, x2_out
     
+    @jit.script_method
     def RK2(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
         x1_input1 = x1
         x2_input1 = x2
@@ -418,6 +430,7 @@ class Network(jit.ScriptModule):
         #         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
         return x1_out, x2_out
     
+    @jit.script_method
     def RK4(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
         x1_input1 = x1
         x2_input1 = x2
@@ -450,14 +463,18 @@ class Network(jit.ScriptModule):
         Da_input = Da
     
         if self.integrator == 'Euler':
-            return self.Euler(x1, x2, dt, Da_input)
+            x1_out, x2_out = self.Euler(x1, x2, dt, Da_input)
         elif self.integrator == 'RK4':
-            return self.RK4(x1, x2, dt, Da_input)
+            x1_out, x2_out = self.RK4(x1, x2, dt, Da_input)
         elif self.integrator == 'RK2':
-            return self.RK2(x1, x2, dt, Da_input)
+            x1_out, x2_out = self.RK2(x1, x2, dt, Da_input)
         else:
             assert False, 'Specify Valid Integrator'
-        #         return self.integrator(x1, x2, dt, Da_input)
+            
+        x1_out = torch.cat((self.initial_x1, x1_out), dim=1)
+        x2_out = torch.cat((self.initial_x2, x2_out), dim=1)
+        
+        return x1_out, x2_out
     
     @jit.script_method
     def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
@@ -471,18 +488,34 @@ class Network(jit.ScriptModule):
         
         x1_out = []
         x2_out = []
-        x1_out.append(x1_inputs[0])
-        x2_out.append(x2_inputs[0])
+#         x1_out.append(self.initial_x1.squeeze(1))
+#         x2_out.append(self.initial_x2.squeeze(1))
         
-        switch = len(x1_inputs) * (1-warmup)
+        x1_out.append(torch.where(x1_inputs[0]>0,x1_inputs[0],
+                                  self.initial_x1.squeeze(1) * (self.x1max - self.x1min) + self.x1min))
+        x2_out.append(torch.where(x2_inputs[0]>0,x2_inputs[0],
+                                  self.initial_x2.squeeze(1) * (self.x2max - self.x2min) + self.x2min))
+        
+        switch = int(len(x1_inputs) * warmup) # (1-warmup)
         for j in range(len(x1_inputs)):
-            if torch.remainder(torch.tensor(j),torch.tensor(switch)) < 1:
+#             if torch.remainder(torch.tensor(j),torch.tensor(switch)) < 1:
+            if j < switch: # Teacher Forcing
                 x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
                 x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
-            else:
+            else: # Autoregressive
                 x1_input = x1_out[j]
                 x2_input = x2_out[j]
-                
+            
+#             print(x1.shape)
+#             print(x2.shape)
+            
+#             print(x1_out[j].shape)
+#             print(x2_out[j].shape)
+            
+#             print(x1_input.shape)
+#             print(x2_input.shape)
+#             assert False
+            
             dt_input = dt_inputs[j]
             
             if self.integrator == 'Euler':
@@ -497,13 +530,17 @@ class Network(jit.ScriptModule):
             x1_out.append(x1_integ.squeeze(-1))
             x2_out.append(x2_integ.squeeze(-1))
             
-        x1_outs = torch.stack(x1_out[1:],dim=1)
-        x2_outs = torch.stack(x2_out[1:],dim=1)
+        x1_outs = torch.stack(x1_out[:],dim=1)
+        x2_outs = torch.stack(x2_out[:],dim=1)
         
         return x1_outs, x2_outs
     
-#     @jit.script_method
+    @jit.script_method
     def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
+#         if self.initial_x1 is None:
+#             self.initial_x1 = nn.Parameter(torch.where(x1[:,[0],...] > 0, x1[:,[0],...], (self.x1max-self.x1min)/2), requires_grad = True)
+#         if self.initial_x2 is None:
+#             self.initial_x2 = nn.Parameter(torch.where(x2[:,[0],...] > 0, x2[:,[0],...], (self.x2max-self.x2min)/2), requires_grad = True)
         
         dt = time[...,1:] - time[...,:-1]
         
@@ -625,18 +662,62 @@ class my_Model():
         cnt, sum_loss = 0, 0
         iters = len(self.dataloader_train)
         for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
+            if self.net.is_initialized is False:
+                initial_x1 = (torch.zeros(x1[:,[0],...].shape)+0.5).to(self.net.device)
+                initial_x2 = (torch.zeros(x2[:,[0],...].shape)+0.5).to(self.net.device)
+                
+                self.net.initial_x1 = nn.Parameter(initial_x1, requires_grad=True) 
+                self.net.initial_x2 = nn.Parameter(initial_x2, requires_grad=True) 
+                self.net.is_initialized = True
+                
+                print('initial x1/x2 Tensors')
+                print(self.net.initial_x1)
+                print(self.net.initial_x2)
+                
+                self.optimizer.add_param_group({"params": self.net.initial_x1})
+                self.optimizer.add_param_group({"params": self.net.initial_x2})
+
+                self.trainable_parameters = \
+                    sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+                
+                print('Network is initialized with trainable parameter')
+                print('Trainable parameters: '+str(self.trainable_parameters))
+
+                my_list = ['initial_x1', 'initial_x2']                
+                params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
+                
+                self.optimizer = torch.optim.AdamW([
+                {'params': base_params},
+                {'params': params, 'lr': self.lr/10}],
+                    lr=self.lr, amsgrad=True, weight_decay=0.01)
+#                 self.optimizer = torch.optim.AdamW(
+#                     self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
+                self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
+            
             self.optimizer.zero_grad()
             
             if epoch == self.epoch_shift:
-                self.optimizer = torch.optim.AdamW(
-                            self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
+                my_list = ['initial_x1', 'initial_x2']                
+                params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
+                
+                self.optimizer = torch.optim.AdamW([
+                {'params': base_params},
+                {'params': params, 'lr': self.lr/10}],
+                    lr=self.lr, amsgrad=True, weight_decay=0.01)
 #                 self.optimizer = torch.optim.Adam(
 #                             self.net.parameters(), lr=self.lr)
 #                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 #                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=1e-2, total_steps=self.total_steps,
-                                                            final_div_factor=1e2,
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3],
+                                                  total_steps=self.total_steps, final_div_factor=1e2,
                                                             )
+                print('Shifting to Autoregressive')
+                self.trainable_parameters = \
+                    sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+                print('Trainable parameters: '+str(self.trainable_parameters))
             
             batch_size = x1.size()[0]
             time_length = x1.size()[1]
