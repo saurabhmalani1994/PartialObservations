@@ -30,11 +30,11 @@ config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_NUM"] = 12
-config["DATA"]["X2_SAMPLE_NUM"] = 12
+config["DATA"]["X1_SAMPLE_NUM"] = 4
+config["DATA"]["X2_SAMPLE_NUM"] = 20
 config["DATA"]["MAX_DELTA_T"] = 0.1
 config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
-config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
+config["DATA"]["INIT_AVAILABLE"] = False   # True for ALL initial conditions available at time 0, False for Not available
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -65,6 +65,7 @@ def cstr_initial_conditions(ic='random'):
 
 def f_cstr(t, y, Da, beta, B):
     """Time derivatives of the CSTR model."""
+#     print(y)
     x1, x2 = y
     dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
     dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
@@ -72,7 +73,7 @@ def f_cstr(t, y, Da, beta, B):
     return [dx1dt, dx2dt]
 
 
-def get_pars(Da: np.float=0.085, B: np.float=22, beta: np.float=3):
+def get_pars(Da: np.float=0.25, B: np.float=11, beta: np.float=3):
 #     B = 22.0
 #     beta = 3.0
     
@@ -81,7 +82,7 @@ def get_pars(Da: np.float=0.085, B: np.float=22, beta: np.float=3):
     return pars
 
 
-def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=22, beta=3, teval=np.linspace(0, 20, 2001)):
+def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.25, B=11, beta=3, teval=np.linspace(0, 20, 2001)):
 
     pars = get_pars(Da,B,beta)
     if y0 is None:
@@ -108,7 +109,7 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.085, B=
 class CSTRDataset(torch.utils.data.Dataset):
     """Dataset of transients obtained from a Brusselator."""
 
-    def __init__(self, n_train, tmax, l_trajectories, Da=0.085, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True, inference=False):
+    def __init__(self, n_train, tmax, l_trajectories, Da=0.25, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True, inference=False):
         self.ids = np.arange(n_train)
         self.x1 = []
         self.x1_out = []
@@ -273,7 +274,7 @@ class Snake(nn.Module):
         
 # class Network(nn.Module):
 class Network(jit.ScriptModule):
-    def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, batch=50, device=None):
+    def __init__(self, hidden_cells, minmaxes, beta=3., B=11., Da=0.33, batch=83, device=None):
         super(Network, self).__init__()
         self.hidden_cells = hidden_cells
         
@@ -358,7 +359,7 @@ class Network(jit.ScriptModule):
         x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
         x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
         Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
-
+        
         ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
 
         for layer in self.layers:
@@ -541,7 +542,7 @@ class Network(jit.ScriptModule):
 #             self.initial_x1 = nn.Parameter(torch.where(x1[:,[0],...] > 0, x1[:,[0],...], (self.x1max-self.x1min)/2), requires_grad = True)
 #         if self.initial_x2 is None:
 #             self.initial_x2 = nn.Parameter(torch.where(x2[:,[0],...] > 0, x2[:,[0],...], (self.x2max-self.x2min)/2), requires_grad = True)
-        
+    
         dt = time[...,1:] - time[...,:-1]
         
         if warmup < 1 or torch.any(x1[0]<0) or torch.any(x2[0]<0):
