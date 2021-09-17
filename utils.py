@@ -30,11 +30,11 @@ config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_NUM"] = 4
-config["DATA"]["X2_SAMPLE_NUM"] = 20
+config["DATA"]["X1_SAMPLE_NUM"] = 12
+config["DATA"]["X2_SAMPLE_NUM"] = 12
 config["DATA"]["MAX_DELTA_T"] = 0.1
-config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
-config["DATA"]["INIT_AVAILABLE"] = False   # True for ALL initial conditions available at time 0, False for Not available
+config["DATA"]["REG_TIME"] = True   # True for regular sampling in time, False for random sampling in time
+config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -90,7 +90,7 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.25, B=1
 
     sol = solve_ivp(f_cstr, y0=y0, t_span=[tmin, tmax],
                     t_eval=teval, args=pars,
-                    rtol=1e-5, atol=1e-8)
+                    rtol=1e-7, atol=1e-10, max_step=0.01)
     if verbose:
         print(sol.message)
 
@@ -121,27 +121,26 @@ class CSTRDataset(torch.utils.data.Dataset):
         self.x2_data_detail = []
         self.time = []
 
-        
+        # Sampling of Da parameter values
         if n_train == 1:
             self.Da = np.array([Da])
         else:
             if random:
                 self.Da_base = np.random.uniform(0.2,0.5,10)   
-#                 self.Da = np.concatenate((np.random.uniform(0.2,0.22,int(0.2*n_train)),np.random.uniform(0.22,0.5,n_train-int(0.2*n_train))))
-#                 self.Da = np.random.uniform(0.33,0.33,n_train)   
             else:
                 self.Da_base = np.linspace(0.2,0.5,10)
-#                 self.Da = np.concatenate((np.linspace(0.2,0.22,int(0.2*n_train)),np.linspace(0.22,0.5,n_train-int(0.2*n_train))))
-#                 self.Da = np.linspace(0.33,0.33,n_train)   
             self.Da = np.random.choice(self.Da_base, n_train, replace=True)
+            
         count = 0
-        
         x1_sampling_times_arr = []
         x2_sampling_times_arr = []
         full_times_arr = []
         max_arr_length = 0
         
+        
+        # Choosing Sampling Times
         for i in range(n_train):
+            # if x1 and x2 are sampled are regular time intervals
             if reg_time:
                 x1_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x1_sample_num+1, endpoint=True).round(decimals=3)
                 x2_sampling_times = np.linspace(skip_time, skip_time+tmax, num=x2_sample_num+1, endpoint=True).round(decimals=3)
@@ -149,26 +148,35 @@ class CSTRDataset(torch.utils.data.Dataset):
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
                 
             else:
+                # During inference mode, we always need the first time point for all variables. If not inference mode, we don't need the initial condition as it will be trained.
                 if inference:
                     x1_sampling_times = np.array([skip_time])
                     x2_sampling_times = np.array([skip_time])
                 else:
                     x1_sampling_times = np.array([])
                     x2_sampling_times = np.array([])
-
+                
+                # Append random sampling times for x1                 
                 while len(x1_sampling_times) < x1_sample_num:
                     x1_sampling_times = np.append(x1_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
                     x1_sampling_times = np.sort(np.unique(x1_sampling_times))
-
+                
+                # Append random sampling times for x2                 
                 while len(x2_sampling_times) < x2_sample_num:
                     x2_sampling_times = np.append(x2_sampling_times, np.array([np.random.uniform(low=skip_time, high=tmax+skip_time+1e-10)]).round(decimals=3))
                     x2_sampling_times = np.sort(np.unique(x2_sampling_times))
                 
+                ##########################################
+                ## Uncomment this for FULL Observations ##
+                # This line ensures x1 and x2 are sampled at the same times #
 #                 x1_sampling_times = x2_sampling_times
+                ##########################################
                 
+                # Find solver sampling times (times are which either x1 and/or x2 are measured)
                 solver_sampling_times = np.sort(np.unique(np.concatenate((np.array([skip_time]), x1_sampling_times, x2_sampling_times))))
+                
+                # Insert intermediate time points to ensure numerical integrator stability. x1 and x2 are NOT measured at these intermediate time points
                 full_times = self.insert_intermediate(solver_sampling_times, maxdt)
-
 
             x1_sampling_times_arr.append(x1_sampling_times)
             x2_sampling_times_arr.append(x2_sampling_times)
@@ -176,26 +184,33 @@ class CSTRDataset(torch.utils.data.Dataset):
 
             if full_times.size > max_arr_length:
                 max_arr_length = full_times.size
-                
+        
+        # Add padding to the end of shorter time vectors for some trajectories to ensure all time vectors are the same length. x1 and x2 are not measured at these extra padded time points so it does not affect the loss calculation.        
         for i in range(n_train):
             while len(full_times_arr[i]) < max_arr_length:
                 full_times_arr[i] = np.append(full_times_arr[i], np.array([tmax+skip_time+0.1]).round(decimals=3))
             self.time.append(full_times_arr[i] - full_times_arr[i][0])
         
         for _ in tqdm(range(n_train), leave=True, position=0):
-#             index = int(np.floor(count/10))
             index = count
             x1_sampling_times = x1_sampling_times_arr[index]
             x2_sampling_times = x2_sampling_times_arr[index]
             full_times = full_times_arr[index]
+            
+            # Integrate system to get trajectory for training
             sol = integrate_cstr(tmin=0, tmax=tmax+skip_time+0.1, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.unique(full_times))
+            
+            # Extra copy of solution at higher time resolution for better plotting of 'true' trajectory
             sol_detail = integrate_cstr(tmin=skip_time, tmax=tmax+skip_time, T=l_trajectories, Da=self.Da[index], B=B, beta=beta, teval=np.linspace(skip_time,tmax+skip_time,int(tmax*20)), y0 = sol.y[:,0])
             
             sol_t = sol.t.round(decimals=3)
             
+            # x1 and x2 vectors are initialized as -1. x1 and x2 variables by construction are always strictly positive, so a value of -1 indicates that at that time point, the variable is NOT measured
+            # For cases where the variables can take any arbitrary value, this can be achieved by having an additional mask vector
             x1 = np.zeros(len(full_times)) - 1
             x2 = np.zeros(len(full_times)) - 1
             
+            # at the time points x1 and/or x2 are 'measured', replace the -1's with the true values
             x1[np.in1d(full_times,x1_sampling_times)] = sol.y[0, np.in1d(sol_t,x1_sampling_times)]
             x2[np.in1d(full_times,x2_sampling_times)] = sol.y[1, np.in1d(sol_t,x2_sampling_times)]
             
@@ -214,10 +229,6 @@ class CSTRDataset(torch.utils.data.Dataset):
             count += 1
         self.solver_time = solver_sampling_times - solver_sampling_times[0]
         self.time_detail = sol_detail.t - sol_detail.t[0]
-        
-#         self.delta_t = self.tt[1]-self.tt[0]  # delta t
-        
-#         print('Using dt of '+str(self.delta_t))
     
     def insert_intermediate(self, t_samp, max_dt):
         t_arr = []
@@ -507,16 +518,6 @@ class Network(jit.ScriptModule):
                 x1_input = x1_out[j]
                 x2_input = x2_out[j]
             
-#             print(x1.shape)
-#             print(x2.shape)
-            
-#             print(x1_out[j].shape)
-#             print(x2_out[j].shape)
-            
-#             print(x1_input.shape)
-#             print(x2_input.shape)
-#             assert False
-            
             dt_input = dt_inputs[j]
             
             if self.integrator == 'Euler':
@@ -538,11 +539,6 @@ class Network(jit.ScriptModule):
     
     @jit.script_method
     def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
-#         if self.initial_x1 is None:
-#             self.initial_x1 = nn.Parameter(torch.where(x1[:,[0],...] > 0, x1[:,[0],...], (self.x1max-self.x1min)/2), requires_grad = True)
-#         if self.initial_x2 is None:
-#             self.initial_x2 = nn.Parameter(torch.where(x2[:,[0],...] > 0, x2[:,[0],...], (self.x2max-self.x2min)/2), requires_grad = True)
-    
         dt = time[...,1:] - time[...,:-1]
         
         if warmup < 1 or torch.any(x1[0]<0) or torch.any(x2[0]<0):
@@ -580,9 +576,8 @@ class my_Model():
             self.device = device
 
         print('Using:', self.device)
-        
-#         self.x1_loss_mult = config["DATA"]["X1_SAMPLE_TIME"]
-#         self.x2_loss_mult = config["DATA"]["X2_SAMPLE_TIME"]
+
+        # Change relative loss weight for x1 and x2. Not currently used so set to 1.
         self.x1_loss_mult = 1
         self.x2_loss_mult = 1
 
@@ -595,7 +590,6 @@ class my_Model():
 
         self.dataloader_train = dataloader_train
         self.dataloader_val = dataloader_val
-        
         
         f = open('minmax/maxmin.txt', 'r')
         self.x1max = float(f.readline())
@@ -621,41 +615,15 @@ class my_Model():
 
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-
-#         self.scheduler_second = torch.optim.lr_scheduler.ReduceLROnPlateau(
-#             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-#         self.scheduler_first = CosineAnnealingWarmupRestarts(self.optimizer,
-#                                           first_cycle_steps=20,
-#                                           cycle_mult=2,
-#                                           max_lr=learning_rate,
-#                                           min_lr=0.0001,
-#                                           warmup_steps=0,
-#                                           gamma=1.0)
         
         self.warmup = 0.0
-        
         self.alpha = 0.5
-        
         self.autoreg_prop = 0
-    
-#         self.scheduler = CosineAnnealingWarmupRestarts(self.optimizer,
-#                                                   first_cycle_steps=20,
-#                                                   cycle_mult=2,
-#                                                   max_lr=learning_rate,
-#                                                   min_lr=0.001,
-#                                                   warmup_steps=0,
-#                                                   gamma=1.0)
         self.epoch_shift = 200
 
 
         self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
 
-#         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=self.lr, total_steps=self.total_steps,
-#                                                             final_div_factor=1e2,
-#                                                             )
-#         self.scheduler2 = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=learning_rate/10, total_steps=total_steps,
-#                                                             final_div_factor=1e2,
-#                                                             )
     
     def train(self, epoch):
         """Train model."""
@@ -663,9 +631,14 @@ class my_Model():
         cnt, sum_loss = 0, 0
         iters = len(self.dataloader_train)
         for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
+            # On first training run, initialize the initial_x1 and initial_x2 trainable parameters with the correct batch size vector
             if self.net.is_initialized is False:
-                initial_x1 = (torch.zeros(x1[:,[0],...].shape)+0.5).to(self.net.device)
-                initial_x2 = (torch.zeros(x2[:,[0],...].shape)+0.5).to(self.net.device)
+                initial_x1 = torch.where(x1[:,[0],...] < 0,
+                                        torch.zeros(x1[:,[0],...].shape)+0.5,
+                                        x1[:,[0],...]).to(self.net.device)
+                initial_x2 = torch.where(x2[:,[0],...] < 0,
+                                        torch.zeros(x2[:,[0],...].shape)+0.5,
+                                        x2[:,[0],...]).to(self.net.device)
                 
                 self.net.initial_x1 = nn.Parameter(initial_x1, requires_grad=True) 
                 self.net.initial_x2 = nn.Parameter(initial_x2, requires_grad=True) 
@@ -692,13 +665,13 @@ class my_Model():
                 {'params': base_params},
                 {'params': params, 'lr': self.lr/10}],
                     lr=self.lr, amsgrad=True, weight_decay=0.01)
-#                 self.optimizer = torch.optim.AdamW(
-#                     self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
             
             self.optimizer.zero_grad()
             
+            # At the epoch value of self.epoch_shift, switch from purely teacher forcing training to hybrid teacher-forcing and autoregressive training.
+            # Switch to OneCycleLR LR rate scheduler
             if epoch == self.epoch_shift:
                 my_list = ['initial_x1', 'initial_x2']                
                 params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
@@ -708,10 +681,7 @@ class my_Model():
                 {'params': base_params},
                 {'params': params, 'lr': self.lr/10}],
                     lr=self.lr, amsgrad=True, weight_decay=0.01)
-#                 self.optimizer = torch.optim.Adam(
-#                             self.net.parameters(), lr=self.lr)
-#                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-#                             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
+
                 self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3],
                                                   total_steps=self.total_steps, final_div_factor=1e2,
                                                             )
@@ -727,13 +697,10 @@ class my_Model():
             autoreg_indices = indices[:int(batch_size*self.autoreg_prop)]
             teacher_forcing_indices = indices[int(batch_size*self.autoreg_prop):]
 
-            
+            # Before self.epoch_shift, Do only full teacher-forcing training. Afterwards, do hybrid training
             if epoch > self.epoch_shift:
-#                 warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
-#                 warmup = int(self.warmup * x1.size()[1])
                 warmup = self.warmup
             else:
-#                 warmup = time_length
                 warmup = 1
             
             # Teacher Forcing
@@ -742,11 +709,13 @@ class my_Model():
                                             time.to(self.device), 
                                             Da.to(self.device), time_length)
             
+            # Normalize vectors before loss calculation
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
             x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
             x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
             x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
-
+            
+            # Loss calculation for teacher-forcing loss
             loss_tf = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                     torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
@@ -755,17 +724,20 @@ class my_Model():
                     torch.where(x1out.to(self.device)>0, x1_norm.to(self.device), 0.),
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
                     ) * self.x1_loss_mult / 2
-
+            
+            # Autoregressive / Partial teacher forcing
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
                                             time.to(self.device), 
                                             Da.to(self.device), warmup)
-
+            
+            # Normalize vectors before loss calculation
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
             x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
             x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
             x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
     
+            # Loss calculation for Autoregressive / Partial teacher forcing loss
             loss_autoreg = self.criterion(
                     torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                     torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
@@ -775,13 +747,12 @@ class my_Model():
                     torch.where(x1out.to(self.device)>0, x1_hat_norm, 0.)
                     ) * self.x1_loss_mult / 2
             
+            # Log sum of teacher forcing loss and Autoregressive / Partial teacher forcing
             loss = torch.exp(torch.log(loss_tf) * self.alpha + torch.log(loss_autoreg) * (1 - self.alpha))
             
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
             self.optimizer.step()
-            
-
             
             # Use for 1-Cycle
             if epoch >= self.epoch_shift:
@@ -789,31 +760,14 @@ class my_Model():
                 self.lr_epoch.append(epoch + cnt / iters)
                 self.lr_track.append(self.scheduler.get_last_lr())
             
-    #        Use for Cosine Annealing
-#             self.scheduler.step(epoch + cnt / iters)
-#             self.lr_epoch.append(epoch + cnt / iters)
-#             self.lr_track.append(self.scheduler.get_lr())
-            
-#             if epoch <= 2560:
-#                 self.scheduler_first.step(epoch + cnt / iters)
-#                 self.lr_epoch.append(epoch + cnt / iters)
-#                 self.lr_track.append(self.scheduler_first.get_lr())
-            
-#             sum_loss += torch.exp(loss).detach().cpu().numpy()
             sum_loss += loss.detach().cpu().numpy()
             cnt += 1
-        
-#         if epoch > 2560:
-#             self.scheduler_second.step(sum_loss / cnt)
-#             self.lr_epoch.append(epoch)
-#             self.lr_track.append(self.scheduler_second._last_lr)
         
 #         Use for lr reduce on plateau
         if epoch < self.epoch_shift:# or epoch <= 1:
             self.scheduler.step(sum_loss / cnt)
             self.lr_epoch.append(epoch)
             self.lr_track.append(self.scheduler._last_lr)
-
         
         self.train_loss.append(sum_loss/cnt)
         return sum_loss/cnt
@@ -828,23 +782,22 @@ class my_Model():
                 
                 batch_size = x1.size()[0]
                 time_length = x1.size()[1]
-
-                if epoch > 200:
-#                     warmup = int((np.maximum(0,1-(epoch-50)/(1259-50))*(1-self.warmup)+self.warmup) * x1.size()[1])
-#                     warmup = int(self.warmup * x1.size()[1])
+                
+                # Before self.epoch_shift, Do only full teacher-forcing training. Afterwards, do only autoregressive
+                if epoch > self.epoch_shift:
                     warmup = 0
                 else:
-#                     warmup = time_length
                     warmup = 1.
 
                 x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
-
-
+            
+                # Normalize vectors before loss calculation
                 x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
                 x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 
                 x1_hat_norm = (x1out_hat - self.x1min) / (self.x1max - self.x1min)
                 x2_hat_norm = ((x2out_hat - self.x2min) / (self.x2max - self.x2min)) 
-
+                
+                # Loss Calculation
                 loss_x2 = self.criterion(
                         torch.where(x2out.to(self.device)>0, x2_norm.to(self.device), 0.),
                         torch.where(x2out.to(self.device)>0, x2_hat_norm, 0.)
@@ -855,10 +808,8 @@ class my_Model():
                         ) * self.x1_loss_mult / 2
         
                 loss = torch.log(loss_x1 + loss_x2)
-                
                 sum_loss += torch.exp(loss).detach().cpu().numpy()
                 cnt += 1
-
 
             self.val_loss.append(sum_loss/cnt)
         return sum_loss/cnt
@@ -888,89 +839,3 @@ def progress(train_loss, val_loss):
     """Define progress bar description."""
     return "Train/Loss: {:.2e}  Val/Loss: {:.2e}".format(
         train_loss, val_loss)
-
-
-class CosineAnnealingWarmupRestarts(_LRScheduler):
-    """
-        optimizer (Optimizer): Wrapped optimizer.
-        first_cycle_steps (int): First cycle step size.
-        cycle_mult(float): Cycle steps magnification. Default: -1.
-        max_lr(float): First cycle's max learning rate. Default: 0.1.
-        min_lr(float): Min learning rate. Default: 0.001.
-        warmup_steps(int): Linear warmup step size. Default: 0.
-        gamma(float): Decrease rate of max learning rate by cycle. Default: 1.
-        last_epoch (int): The index of last epoch. Default: -1.
-    """
-    
-    def __init__(self,
-                 optimizer : torch.optim.Optimizer,
-                 first_cycle_steps : int,
-                 cycle_mult : float = 1.,
-                 max_lr : float = 0.1,
-                 min_lr : float = 0.001,
-                 warmup_steps : int = 0,
-                 gamma : float = 1.,
-                 last_epoch : int = -1
-        ):
-        assert warmup_steps < first_cycle_steps
-        
-        self.first_cycle_steps = first_cycle_steps # first cycle step size
-        self.cycle_mult = cycle_mult # cycle steps magnification
-        self.base_max_lr = max_lr # first max learning rate
-        self.max_lr = max_lr # max learning rate in the current cycle
-        self.min_lr = min_lr # min learning rate
-        self.warmup_steps = warmup_steps # warmup step size
-        self.gamma = gamma # decrease rate of max learning rate by cycle
-        
-        self.cur_cycle_steps = first_cycle_steps # first cycle step size
-        self.cycle = 0 # cycle count
-        self.step_in_cycle = last_epoch # step size of the current cycle
-        
-        super(CosineAnnealingWarmupRestarts, self).__init__(optimizer, last_epoch)
-        
-        # set learning rate min_lr
-        self.init_lr()
-    
-    def init_lr(self):
-        self.base_lrs = []
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = self.min_lr
-            self.base_lrs.append(self.min_lr)
-    
-    def get_lr(self):
-        if self.step_in_cycle == -1:
-            return self.base_lrs
-        elif self.step_in_cycle < self.warmup_steps:
-            return [(self.max_lr - base_lr)*self.step_in_cycle / self.warmup_steps + base_lr for base_lr in self.base_lrs]
-        else:
-            return [base_lr + (self.max_lr - base_lr) \
-                    * (1 + math.cos(math.pi * (self.step_in_cycle-self.warmup_steps) \
-                                    / (self.cur_cycle_steps - self.warmup_steps))) / 2
-                    for base_lr in self.base_lrs]
-
-    def step(self, epoch=None):
-        if epoch is None:
-            epoch = self.last_epoch + 1
-            self.step_in_cycle = self.step_in_cycle + 1
-            if self.step_in_cycle >= self.cur_cycle_steps:
-                self.cycle += 1
-                self.step_in_cycle = self.step_in_cycle - self.cur_cycle_steps
-                self.cur_cycle_steps = int((self.cur_cycle_steps - self.warmup_steps) * self.cycle_mult) + self.warmup_steps
-        else:
-            if epoch >= self.first_cycle_steps:
-                if self.cycle_mult == 1.:
-                    self.step_in_cycle = epoch % self.first_cycle_steps
-                    self.cycle = epoch // self.first_cycle_steps
-                else:
-                    n = int(math.log((epoch / self.first_cycle_steps * (self.cycle_mult - 1) + 1), self.cycle_mult))
-                    self.cycle = n
-                    self.step_in_cycle = epoch - int(self.first_cycle_steps * (self.cycle_mult ** n - 1) / (self.cycle_mult - 1))
-                    self.cur_cycle_steps = self.first_cycle_steps * self.cycle_mult ** (n)
-            else:
-                self.cur_cycle_steps = self.first_cycle_steps
-                self.step_in_cycle = epoch
-                
-        self.max_lr = self.base_max_lr * (self.gamma**self.cycle)
-        self.last_epoch = math.floor(epoch)
-        for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
-            param_group['lr'] = lr
