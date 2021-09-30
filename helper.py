@@ -30,8 +30,16 @@ def make_Bifurc():
     unstable_ss_true, unstable_Da_true, stable_ss1_true, stable_Da1_true, stable_ss2_true, stable_Da2_true,\
     Da_arr_true, x1min_true, x2min_true, x1max_true, x2max_true = make_Bifurc_true()
     
-    unstable_ss_pred, unstable_Da_pred, stable_ss1_pred, stable_Da1_pred, stable_ss2_pred, stable_Da2_pred,\
+    unstable_ss_pred, unstable_Da_pred, stable_ss_pred, stable_Da_pred, \
     Da_arr_pred, x1min_pred, x2min_pred, x1max_pred, x2max_pred = make_Bifurc_prediction()
+    
+    
+    print('My bifurc shapes')
+    print(stable_ss_pred.shape)
+    print(stable_Da_pred.shape)
+    print(stable_ss_pred)
+    print(stable_Da_pred)
+    print('===================')
     
     fig = plt.figure(figsize=(15,15))
     ax1 = fig.add_subplot(111)
@@ -41,9 +49,10 @@ def make_Bifurc():
     ax1.plot(Da_arr_true, x1min_true, 'k')
     ax1.plot(Da_arr_true, x1max_true, 'k')
 
-    ax1.plot(stable_Da1_pred,stable_ss1_pred[:,0],'b',label='Prediction')
-    ax1.plot(stable_Da2_pred,stable_ss2_pred[:,0],'b')
-    ax1.plot(unstable_Da_pred,unstable_ss_pred[:,0],'b--')
+    if stable_Da_pred.size > 0:
+        ax1.plot(stable_Da_pred,stable_ss_pred[...,0],'b',label='Prediction')
+    if unstable_Da_pred.size > 0:
+        ax1.plot(unstable_Da_pred,unstable_ss_pred[...,0],'b--')
     ax1.plot(Da_arr_pred, x1min_pred, 'b')
     ax1.plot(Da_arr_pred, x1max_pred, 'b')
 
@@ -61,9 +70,10 @@ def make_Bifurc():
     ax1.plot(Da_arr_true, x2min_true, 'k')
     ax1.plot(Da_arr_true, x2max_true, 'k')
 
-    ax1.plot(stable_Da1_pred,stable_ss1_pred[:,1],'b',label='Prediction')
-    ax1.plot(stable_Da2_pred,stable_ss2_pred[:,1],'b')
-    ax1.plot(unstable_Da_pred,unstable_ss_pred[:,1],'b--')
+    if stable_Da_pred.size > 0:
+        ax1.plot(stable_Da_pred,stable_ss_pred[...,1],'b',label='Prediction')
+    if unstable_Da_pred.size > 0:
+        ax1.plot(unstable_Da_pred,unstable_ss_pred[...,1],'b--')
     ax1.plot(Da_arr_pred, x2min_pred, 'b')
     ax1.plot(Da_arr_pred, x2max_pred, 'b')
 
@@ -116,14 +126,16 @@ def make_Bifurc_true(verbose=False):
             solved = False
             perturb = 0.1
             
+            y0 = [root[1], 2]
             while not solved:
                 x10 = root[0] + perturb
-                y0 = [root[1], 2]
+#                 y0 = [root[1], 2]
 
                 y, infodict, ier, mesg = fsolve(ODE_Bifurc, y0, args=(numpy_f_cstr_integ, Da, x10), full_output=True)
                 
                 if ier == 1:
                     solved = True
+                    y0 = y
                 else:
                     perturb = perturb * 0.5
                     
@@ -168,25 +180,29 @@ def make_Bifurc_true(verbose=False):
     
     if verbose:
     
-        plt.figure()
-    #     plt.plot(Da_arr,roots[:,0])
-        plt.plot(stable_Da1,stable_ss1[:,0],'k')
-        plt.plot(stable_Da2,stable_ss2[:,0],'k')
-        plt.plot(unstable_Da,unstable_ss[:,0],'k--')
-        plt.plot(Da_arr, x1min, 'k')
-        plt.plot(Da_arr, x1max, 'k')
-        plt.xlabel(r'Da', fontsize=20)
-        plt.ylabel(r'$x_1$', fontsize=20)
+        fig = plt.figure(figsize=(15,15))
+        ax1 = fig.add_subplot(111)
+        ax1.plot(stable_Da1,stable_ss1[:,0],'k')
+        ax1.plot(stable_Da2,stable_ss2[:,0],'k')
+        ax1.plot(unstable_Da,unstable_ss[:,0],'k--')
+        ax1.plot(Da_arr, x1min, 'k')
+        ax1.plot(Da_arr, x1max, 'k')
+        ax1.set_xlabel(r'Da', fontsize=30)
+        ax1.set_ylabel(r'$x_1$', fontsize=30)
+        ax1.tick_params(axis='both', which='major', labelsize=20)
+        fig.savefig('data/Bifurcation Plot True x1.png',format='png')
 
-        plt.figure()
-    #     plt.plot(Da_arr,roots[:,1])
-        plt.plot(stable_Da1,stable_ss1[:,1],'k')
-        plt.plot(stable_Da2,stable_ss2[:,1],'k')
-        plt.plot(unstable_Da,unstable_ss[:,1],'k--')
-        plt.plot(Da_arr, x2min, 'k')
-        plt.plot(Da_arr, x2max, 'k')
-        plt.xlabel(r'Da', fontsize=20)
-        plt.ylabel(r'$x_2$', fontsize=20)
+        fig = plt.figure(figsize=(15,15))
+        ax1 = fig.add_subplot(111)
+        ax1.plot(stable_Da1,stable_ss1[:,1],'k')
+        ax1.plot(stable_Da2,stable_ss2[:,1],'k')
+        ax1.plot(unstable_Da,unstable_ss[:,1],'k--')
+        ax1.plot(Da_arr, x2min, 'k')
+        ax1.plot(Da_arr, x2max, 'k')
+        ax1.set_xlabel(r'Da', fontsize=30)
+        ax1.set_ylabel(r'$x_2$', fontsize=30)
+        ax1.tick_params(axis='both', which='major', labelsize=20)
+        fig.savefig('data/Bifurcation Plot True x2.png',format='png')
     return unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max
     
 def ODE_Bifurc(y, func, Da, x10):
@@ -223,11 +239,8 @@ def make_Bifurc_prediction(verbose=False):
     
     Da_arr = np.linspace(0.2,0.5,100)
     
-    stable_ss1 = []
-    stable_Da1 = []
-    
-    stable_ss2 = []
-    stable_Da2 = []
+    stable_ss = []
+    stable_Da = []
     
     unstable_ss = []
     unstable_Da = []
@@ -240,7 +253,7 @@ def make_Bifurc_prediction(verbose=False):
     
     roots = []
     switch = False
-    root = [0.5, 3]
+    root = [0.5, 1]
     for i in range(len(Da_arr)):
         Da = Da_arr[i]
         
@@ -259,26 +272,31 @@ def make_Bifurc_prediction(verbose=False):
         root = fsolve(numpy_function, root)
         J = torch.autograd.functional.jacobian(torch_function, torch.from_numpy(root), strict=True)
         w, v = np.linalg.eig(J)
-        
-        
+
         if np.any(w.real>0):
-            switch = True
+            if switch is not True:
+                switch = True
+                stable_ss.append(np.array([np.nan, np.nan]))
+                stable_Da.append(np.nan)
+                
             unstable_ss.append(root)
             unstable_Da.append(Da)
-            
+
             solved = False
             perturb = 0.1
             
+            y0 = [root[1], 2]
             while not solved:
                 x10 = root[0] + perturb
-                y0 = [root[1], 2]
+                
 
                 y, infodict, ier, mesg = fsolve(ODE_Bifurc, y0, args=(numpy_function_integ, Da, x10), full_output=True)
                 
                 if ier == 1:
                     solved = True
+                    y0=y
                 else:
-                    perturb = perturb * 0.5
+                    perturb = perturb * 0.8
                     
             y0_int = [x10, y[0]]
             t_eval = np.linspace(0, y[1], 1000)
@@ -286,29 +304,25 @@ def make_Bifurc_prediction(verbose=False):
             sol = solve_ivp(numpy_function_integ, y0=y0_int, t_span=[0, t_eval[-1]],
                                 t_eval=t_eval,
                                 rtol=1e-5, atol=1e-8)
-
+            
             x1max.append(np.max(sol.y[0,:]))
             x2max.append(np.max(sol.y[1,:]))
             x1min.append(np.min(sol.y[0,:]))
             x2min.append(np.min(sol.y[1,:]))
                     
         else:
-            if not switch:
-                stable_ss1.append(root)
-                stable_Da1.append(Da)
-                
-                x1max.append(root[0])
-                x2max.append(root[1])
-                x1min.append(root[0])
-                x2min.append(root[1])
-            else:
-                stable_ss2.append(root)
-                stable_Da2.append(Da)
-                
-                x1max.append(root[0])
-                x2max.append(root[1])
-                x1min.append(root[0])
-                x2min.append(root[1])
+            if switch is not False:
+                switch = False
+                unstable_ss.append(np.array([np.nan, np.nan]))
+                unstable_Da.append(np.nan)
+            stable_ss.append(root)
+            stable_Da.append(Da)
+
+            x1max.append(root[0])
+            x2max.append(root[1])
+            x1min.append(root[0])
+            x2min.append(root[1])
+
         
         roots.append(root)
     roots = np.array(roots)
@@ -316,34 +330,34 @@ def make_Bifurc_prediction(verbose=False):
     
     unstable_ss = np.array(unstable_ss)
     unstable_Da = np.array(unstable_Da)
-    stable_ss1 = np.array(stable_ss1)
-    stable_Da1 = np.array(stable_Da1)
-    stable_ss2 = np.array(stable_ss2)
-    stable_Da2 = np.array(stable_Da2)
-        
+    stable_ss = np.array(stable_ss)
+    stable_Da = np.array(stable_Da)
+    
     if verbose:
 
         plt.figure()
     #     plt.plot(Da_arr,roots[:,0])
-        plt.plot(stable_Da1,stable_ss1[:,0],'b')
-        plt.plot(stable_Da2,stable_ss2[:,0],'b')
-        plt.plot(unstable_Da,unstable_ss[:,0],'b--')
+        if stable_Da.size > 0:
+            plt.plot(stable_Da,stable_ss[...,0],'b')
+        if unstable_Da.size > 0:
+            plt.plot(unstable_Da,unstable_ss[...,0],'b--')
         plt.plot(Da_arr, x1min, 'b')
         plt.plot(Da_arr, x1max, 'b')
-        plt.xlabel(r'Da', fontsize=20)
-        plt.ylabel(r'$x_1$', fontsize=20)
+        plt.xlabel(r'Da', fontsize=24)
+        plt.ylabel(r'$x_1$', fontsize=24)
 
         plt.figure()
     #     plt.plot(Da_arr,roots[:,1])
-        plt.plot(stable_Da1,stable_ss1[:,1],'b')
-        plt.plot(stable_Da2,stable_ss2[:,1],'b')
-        plt.plot(unstable_Da,unstable_ss[:,1],'b--')
+        if stable_Da.size > 0:
+            plt.plot(stable_Da,stable_ss[...,1],'b')
+        if unstable_Da.size > 0:
+            plt.plot(unstable_Da,unstable_ss[...,1],'b--')
         plt.plot(Da_arr, x2min, 'b')
         plt.plot(Da_arr, x2max, 'b')
-        plt.xlabel(r'Da', fontsize=20)
-        plt.ylabel(r'$x_2$', fontsize=20)
+        plt.xlabel(r'Da', fontsize=24)
+        plt.ylabel(r'$x_2$', fontsize=24)
         
-    return unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max
+    return unstable_ss, unstable_Da, stable_ss, stable_Da, Da_arr, x1min, x2min, x1max, x2max
     
     
     
@@ -494,6 +508,36 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     fig.savefig('Figures/RHS for x2' + '.png',format='png', bbox_inches='tight')
     plt.show()
     plt.close()
+    
+    if network.box == 'Grey' or network.box == 'Gray':
+        real_phi = np.concatenate((np.array(real_phi,dtype=object))).flatten()
+        pred_phi = np.concatenate((np.array(pred_phi,dtype=object))).flatten()
+        
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111)
+        ax.plot(real_phi, pred_phi,'b.')
+        ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
+        ax.set_xlabel('True phi: ',fontsize=40)
+        ax.set_ylabel('Predicted phi: ',fontsize=40)
+        plt.yticks(fontsize=25)
+        plt.xticks(fontsize=25)
+        fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+        
+        if network.parameter_knowledge == 'Trainable':
+            labels = [r'$B$',r'$\beta$']
+            x = np.arange(len(labels))
+            width = 0.35
+            
+            fig = plt.figure(figsize=(20,10))
+            ax = fig.add_subplot(111)
+            ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
+            ax.bar(x+width/2,[network.B.item()*100, network.beta.item()*100],width=width,label='Model Prediction')
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels,fontsize=30)
+            plt.yticks(fontsize=30)
+            plt.title('Model Prediction of Experimental Parameters',fontsize=25)
+            plt.legend(fontsize=30)
+            fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
     
     
 def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]):

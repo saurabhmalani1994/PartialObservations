@@ -119,6 +119,8 @@ def main(config):
     print(np.array(x1_init))
     print(np.array(x2_init))
 #     assert False
+    print('myDas')
+    print(dataset_train.Da)
     
     for epoch in progress_bar:
         train_loss = model.train(epoch)

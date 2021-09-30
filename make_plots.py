@@ -21,7 +21,9 @@ def main(config, Da=config["PAR"]["Da"]):
     train_loss = np.load('data/model__training_loss.npy')
     val_loss = np.load('data/model__validation_loss.npy')
     epoch_list = np.load('data/model__lr_epoch.npy')
-    lr_list = np.load('data/model__lr_track.npy')
+    lr_list = np.load('data/model__lr_track.npy', allow_pickle=True)
+    
+#     print(lr_list)
     
     f = open('minmax/maxmin.txt', 'r')
     x1max = float(f.readline())

@@ -33,8 +33,8 @@ config["DATA"]["SKIP_TIME"] = 1
 config["DATA"]["X1_SAMPLE_NUM"] = 12
 config["DATA"]["X2_SAMPLE_NUM"] = 12
 config["DATA"]["MAX_DELTA_T"] = 0.1
-config["DATA"]["REG_TIME"] = True   # True for regular sampling in time, False for random sampling in time
-config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
+config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
+config["DATA"]["INIT_AVAILABLE"] = False   # True for ALL initial conditions available at time 0, False for Not available
 
 config["PAR"] = {}
 config["PAR"]["Da"] = 0.33
@@ -43,7 +43,7 @@ config["PAR"]["beta"] = 3.
 
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
-config["TRAINING"]["LEARNING_RATE"] = 5e-2
+config["TRAINING"]["LEARNING_RATE"] = 1e-2
 config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
@@ -129,6 +129,8 @@ class CSTRDataset(torch.utils.data.Dataset):
                 self.Da_base = np.random.uniform(0.2,0.5,10)   
             else:
                 self.Da_base = np.linspace(0.2,0.5,10)
+#                 self.Da_base = np.concatenate((np.linspace(0.2,0.25,5),np.linspace(0.45,0.5,5)))
+#                 self.Da_base = np.linspace(0.32,0.37,10)
             self.Da = np.random.choice(self.Da_base, n_train, replace=True)
             
         count = 0
@@ -306,10 +308,10 @@ class Network(jit.ScriptModule):
         self.integrator = 'RK2'
         
         ## Black or Grey/Gray ##
-        self.box = 'Black'
+        self.box = 'Grey'
         
         ## If Grey-Box, Are Parameters Trainable or Fixed ##
-        self.parameter_knowledge = 'Fixed'
+        self.parameter_knowledge = 'Trainable'
         
         ############################################################
         
@@ -359,8 +361,8 @@ class Network(jit.ScriptModule):
             self.B = nn.Parameter(torch.tensor(B/100), requires_grad = False)
             self.beta = nn.Parameter(torch.tensor(beta/100), requires_grad = False)
         elif self.parameter_knowledge == 'Trainable':
-            self.B = nn.Parameter(torch.tensor(7./100), requires_grad = True)
-            self.beta = nn.Parameter(torch.tensor(7./100), requires_grad = True)
+            self.B = nn.Parameter(torch.tensor(10./100), requires_grad = True)
+            self.beta = nn.Parameter(torch.tensor(5./100), requires_grad = True)
         else:
             assert False ,'Tell me whether or not to train the parameters'
         
@@ -656,15 +658,44 @@ class my_Model():
                 
                 print('Network is initialized with trainable parameter')
                 print('Trainable parameters: '+str(self.trainable_parameters))
-
-                my_list = ['initial_x1', 'initial_x2']                
-                params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
                 
-                self.optimizer = torch.optim.AdamW([
-                {'params': base_params},
-                {'params': params, 'lr': self.lr/10}],
-                    lr=self.lr, amsgrad=True, weight_decay=0.01)
+                if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
+                    my_list = ['initial_x1', 'initial_x2']
+                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
+
+                    self.optimizer = torch.optim.AdamW([
+                    {'params': base_params},
+                    {'params': params, 'lr': self.lr/10}],
+                        lr=self.lr, amsgrad=True, weight_decay=0.01)
+
+                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[5e-3,1e-3],
+                                                      total_steps=self.total_steps, final_div_factor=1e2,
+                                                                )
+                elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
+                    my_list = ['initial_x1', 'initial_x2']
+                    my_list_B = ['beta', 'B']
+                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                    B_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list_B, self.net.named_parameters()))))
+                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: (kv[0] not in my_list) and (kv[0] not in my_list_B), self.net.named_parameters()))))
+
+                    self.optimizer = torch.optim.AdamW([
+                    {'params': base_params},
+                    {'params': params, 'lr': self.lr/10},
+                    {'params': B_params, 'lr': self.lr/10}],
+                        lr=self.lr, amsgrad=True, weight_decay=0.01)
+                
+#                 if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
+#                     my_list = ['initial_x1', 'initial_x2']                
+#                 elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
+#                     my_list = ['initial_x1', 'initial_x2', 'beta', 'B']     
+#                 params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+#                 base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
+                
+#                 self.optimizer = torch.optim.AdamW([
+#                 {'params': base_params},
+#                 {'params': params, 'lr': self.lr/10}],
+#                     lr=self.lr, amsgrad=True, weight_decay=0.01)
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
             
@@ -673,18 +704,36 @@ class my_Model():
             # At the epoch value of self.epoch_shift, switch from purely teacher forcing training to hybrid teacher-forcing and autoregressive training.
             # Switch to OneCycleLR LR rate scheduler
             if epoch == self.epoch_shift:
-                my_list = ['initial_x1', 'initial_x2']                
-                params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
-                
-                self.optimizer = torch.optim.AdamW([
-                {'params': base_params},
-                {'params': params, 'lr': self.lr/10}],
-                    lr=self.lr, amsgrad=True, weight_decay=0.01)
+                if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
+                    my_list = ['initial_x1', 'initial_x2']
+                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
 
-                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3],
-                                                  total_steps=self.total_steps, final_div_factor=1e2,
-                                                            )
+                    self.optimizer = torch.optim.AdamW([
+                    {'params': base_params},
+                    {'params': params, 'lr': self.lr}],
+                        lr=self.lr, amsgrad=True, weight_decay=0.01)
+
+                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[5e-3,1e-3],
+                                                      total_steps=self.total_steps, final_div_factor=1e2,
+                                                                )
+                elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
+                    my_list = ['initial_x1', 'initial_x2']
+                    my_list_B = ['beta', 'B']
+                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+                    B_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list_B, self.net.named_parameters()))))
+                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: (kv[0] not in my_list) and (kv[0] not in my_list_B), self.net.named_parameters()))))
+
+                    self.optimizer = torch.optim.AdamW([
+                    {'params': base_params},
+                    {'params': params, 'lr': self.lr},
+                    {'params': B_params, 'lr': self.lr}],
+                        lr=self.lr, amsgrad=True, weight_decay=0.01)
+
+                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3, 1e-3],
+                                                      total_steps=self.total_steps, final_div_factor=1e2,
+                                                                )
+                                      
                 print('Shifting to Autoregressive')
                 self.trainable_parameters = \
                     sum(p.numel() for p in self.net.parameters() if p.requires_grad)
