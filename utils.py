@@ -25,7 +25,7 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
 config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 83
+config["DATA"]["N_TRAIN"] = 11
 config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
@@ -131,7 +131,8 @@ class CSTRDataset(torch.utils.data.Dataset):
                 self.Da_base = np.linspace(0.2,0.5,10)
 #                 self.Da_base = np.concatenate((np.linspace(0.2,0.25,5),np.linspace(0.45,0.5,5)))
 #                 self.Da_base = np.linspace(0.32,0.37,10)
-            self.Da = np.random.choice(self.Da_base, n_train, replace=True)
+#             self.Da = np.random.choice(self.Da_base, n_train, replace=True)
+            self.Da = np.linspace(0.2,0.5,n_train)
             
         count = 0
         x1_sampling_times_arr = []
@@ -255,6 +256,7 @@ class CSTRDataset(torch.utils.data.Dataset):
             torch.tensor(x2_out, dtype=torch.float64), \
             torch.tensor(time, dtype=torch.float64), \
             torch.tensor(Da, dtype=torch.float64).unsqueeze(-1), \
+            index
 
     def save_data(self, path, filename):
         np.savez(path+filename, x=self.x, y=self.y, y_data=self.y_data, tt=self.tt, ids=self.ids)
@@ -340,6 +342,7 @@ class Network(jit.ScriptModule):
             
             self.ANNPower1 = nn.Parameter(torch.tensor(-0.08), requires_grad = True)
             self.ANNPower2 = nn.Parameter(torch.tensor(0.), requires_grad = False)
+
         else:
             assert False, 'No Box of this color'
             
@@ -368,19 +371,23 @@ class Network(jit.ScriptModule):
         
         
     @jit.script_method
-    def network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor) -> Tensor:        
+    def network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor) -> Tensor:
+#         if self.box == 'White':
+#             a=1
+#             return self.WhiteBox(x1_input, x2_input, Da)
+#         else:
         x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
         x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
         Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
-        
+
         ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
 
         for layer in self.layers:
             ANN_input = layer(ANN_input)
             ANN_input = self.activation(ANN_input)
         ANN_output = self.output_layer(ANN_input)
-        
-        
+
+
         if self.box == 'Black':
             return self.BlackBox(ANN_output)
         elif self.box == 'Grey' or self.box == 'Gray':
@@ -402,7 +409,6 @@ class Network(jit.ScriptModule):
     
     @jit.script_method
     def GreyBox(self, x1: Tensor, x2: Tensor, ANN_output: Tensor) -> Tensor:
-        ## TO IMPLEMENT ##
         phi = ANN_output[...,0] * torch.pow(2.,self.ANNPower1*7)  # phi = Da * (1-x1) * np.exp(x2)
         #         phi = ANN_output[...,0] * 10  # phi = Da * (1-x1) * np.exp(x2)
 
@@ -416,6 +422,7 @@ class Network(jit.ScriptModule):
         output = torch.stack((dx1dt, dx2dt), dim=-1)
         
         return output
+
     
     @jit.script_method
     def Euler(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor) -> Tuple[Tensor, Tensor]:
@@ -470,28 +477,28 @@ class Network(jit.ScriptModule):
 
         return x1_out, x2_out
     
-    @jit.script_method
-    def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
-        """Forward pass"""
-        #         Da_input = Da.repeat(1,x1.size()[1])
-        Da_input = Da
+#     @jit.script_method
+#     def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float index: Optional[int]) -> Tuple[Tensor, Tensor]:
+#         """Forward pass"""
+#         #         Da_input = Da.repeat(1,x1.size()[1])
+#         Da_input = Da
     
-        if self.integrator == 'Euler':
-            x1_out, x2_out = self.Euler(x1, x2, dt, Da_input)
-        elif self.integrator == 'RK4':
-            x1_out, x2_out = self.RK4(x1, x2, dt, Da_input)
-        elif self.integrator == 'RK2':
-            x1_out, x2_out = self.RK2(x1, x2, dt, Da_input)
-        else:
-            assert False, 'Specify Valid Integrator'
+#         if self.integrator == 'Euler':
+#             x1_out, x2_out = self.Euler(x1, x2, dt, Da_input)
+#         elif self.integrator == 'RK4':
+#             x1_out, x2_out = self.RK4(x1, x2, dt, Da_input)
+#         elif self.integrator == 'RK2':
+#             x1_out, x2_out = self.RK2(x1, x2, dt, Da_input)
+#         else:
+#             assert False, 'Specify Valid Integrator'
             
-        x1_out = torch.cat((self.initial_x1, x1_out), dim=1)
-        x2_out = torch.cat((self.initial_x2, x2_out), dim=1)
+#         x1_out = torch.cat((self.initial_x1, x1_out), dim=1)
+#         x2_out = torch.cat((self.initial_x2, x2_out), dim=1)
         
-        return x1_out, x2_out
+#         return x1_out, x2_out
     
     @jit.script_method
-    def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
+    def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float, index: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
         """Forward pass"""
         # x1 = (N, T, 1) N-batches, T-time, dim 1
         
@@ -504,11 +511,14 @@ class Network(jit.ScriptModule):
         x2_out = []
 #         x1_out.append(self.initial_x1.squeeze(1))
 #         x2_out.append(self.initial_x2.squeeze(1))
-        
-        x1_out.append(torch.where(x1_inputs[0]>0,x1_inputs[0],
-                                  self.initial_x1.squeeze(1) * (self.x1max - self.x1min) + self.x1min))
-        x2_out.append(torch.where(x2_inputs[0]>0,x2_inputs[0],
-                                  self.initial_x2.squeeze(1) * (self.x2max - self.x2min) + self.x2min))
+        if index is not None:
+            x1_out.append(torch.where(x1_inputs[0]>0,x1_inputs[0],
+                                      self.initial_x1.squeeze(1)[index] * (self.x1max - self.x1min) + self.x1min))
+            x2_out.append(torch.where(x2_inputs[0]>0,x2_inputs[0],
+                                      self.initial_x2.squeeze(1)[index] * (self.x2max - self.x2min) + self.x2min))
+        else:
+            x1_out.append(x1_inputs[0])
+            x2_out.append(x2_inputs[0])
         
         switch = int(len(x1_inputs) * warmup) # (1-warmup)
         for j in range(len(x1_inputs)):
@@ -540,13 +550,13 @@ class Network(jit.ScriptModule):
         return x1_outs, x2_outs
     
     @jit.script_method
-    def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: float) -> Tuple[Tensor, Tensor]:
+    def forward(self, x1: Tensor, x2: Tensor, time: Tensor, Da: Tensor, warmup: float, index: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
         dt = time[...,1:] - time[...,:-1]
-        
-        if warmup < 1 or torch.any(x1[0]<0) or torch.any(x2[0]<0):
-            return self.forward_manual(x1, x2, dt, Da, warmup)
-        else:
-            return self.forward_full(x1, x2, dt, Da, warmup)            
+        return self.forward_manual(x1, x2, dt, Da, warmup, index)
+#         if warmup < 1 or torch.any(x1[0]<0) or torch.any(x2[0]<0):
+#             return self.forward_manual(x1, x2, dt, Da, warmup, index)
+#         else:
+#             return self.forward_full(x1, x2, dt, Da, warmup, index)            
 
 class my_Loss(nn.Module):
     def __init__(self, reduction='mean'):
@@ -593,18 +603,57 @@ class my_Model():
         self.dataloader_train = dataloader_train
         self.dataloader_val = dataloader_val
         
+        self.lr = learning_rate
+        
+        traj_num = len(self.dataloader_train.dataset)
+        x1 = torch.tensor(np.array(self.dataloader_train.dataset.x1), dtype=torch.float64)
+        x2 = torch.tensor(np.array(self.dataloader_train.dataset.x2), dtype=torch.float64)
+
+        initial_x1 = torch.where(x1[:,[0],...] < 0,
+                                        torch.zeros(x1[:,[0],...].shape)+0.5,
+                                        x1[:,[0],...]).to(self.net.device)
+        initial_x2 = torch.where(x2[:,[0],...] < 0,
+                                        torch.zeros(x2[:,[0],...].shape)+0.5,
+                                        x2[:,[0],...]).to(self.net.device)
+        
+        self.net.initial_x1 = nn.Parameter(initial_x1, requires_grad=True) 
+        self.net.initial_x2 = nn.Parameter(initial_x2, requires_grad=True) 
+        self.net.is_initialized = True
+
+        print('initial x1/x2 Tensors')
+        print(self.net.initial_x1)
+        print(self.net.initial_x2)
+
+        self.trainable_parameters = \
+            sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+
+        print('Network is initialized with trainable parameter')
+        print('Trainable parameters: '+str(self.trainable_parameters))
+
+        if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
+            my_list = ['initial_x1', 'initial_x2']
+            params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+            base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
+            B_params = []
+
+        elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
+            my_list = ['initial_x1', 'initial_x2']
+            my_list_B = ['beta', 'B']
+            params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
+            B_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list_B, self.net.named_parameters()))))
+            base_params = list(map(lambda x: x[1],list(filter(lambda kv: (kv[0] not in my_list) and (kv[0] not in my_list_B), self.net.named_parameters()))))
+
+        self.optimizer = torch.optim.AdamW([
+        {'params': base_params},
+        {'params': params, 'lr': self.lr/10},
+        {'params': B_params, 'lr': self.lr/10}],
+            lr=self.lr, amsgrad=True, weight_decay=0.01)
+        
         f = open('minmax/maxmin.txt', 'r')
         self.x1max = float(f.readline())
         self.x1min = float(f.readline())
         self.x2max = float(f.readline())
         self.x2min = float(f.readline())
-        
-        self.lr = learning_rate
-        
-        self.optimizer = torch.optim.AdamW(
-            self.net.parameters(), lr=self.lr, amsgrad=True, weight_decay=0.01)
-#         self.optimizer = torch.optim.Adam(
-#             self.net.parameters(), lr=self.lr)
 
 #         self.criterion = torch.nn.MSELoss(reduction='mean').to(self.device)
         self.criterion = my_Loss(reduction='mean')
@@ -624,7 +673,7 @@ class my_Model():
         self.epoch_shift = 200
 
 
-        self.total_steps = int(np.ceil(config["DATA"]["N_TEST"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
+        self.total_steps = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
 
     
     def train(self, epoch):
@@ -632,112 +681,21 @@ class my_Model():
         self.net.train()
         cnt, sum_loss = 0, 0
         iters = len(self.dataloader_train)
-        for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
-            # On first training run, initialize the initial_x1 and initial_x2 trainable parameters with the correct batch size vector
-            if self.net.is_initialized is False:
-                initial_x1 = torch.where(x1[:,[0],...] < 0,
-                                        torch.zeros(x1[:,[0],...].shape)+0.5,
-                                        x1[:,[0],...]).to(self.net.device)
-                initial_x2 = torch.where(x2[:,[0],...] < 0,
-                                        torch.zeros(x2[:,[0],...].shape)+0.5,
-                                        x2[:,[0],...]).to(self.net.device)
-                
-                self.net.initial_x1 = nn.Parameter(initial_x1, requires_grad=True) 
-                self.net.initial_x2 = nn.Parameter(initial_x2, requires_grad=True) 
-                self.net.is_initialized = True
-                
-                print('initial x1/x2 Tensors')
-                print(self.net.initial_x1)
-                print(self.net.initial_x2)
-                
-                self.optimizer.add_param_group({"params": self.net.initial_x1})
-                self.optimizer.add_param_group({"params": self.net.initial_x2})
-
-                self.trainable_parameters = \
-                    sum(p.numel() for p in self.net.parameters() if p.requires_grad)
-                
-                print('Network is initialized with trainable parameter')
-                print('Trainable parameters: '+str(self.trainable_parameters))
-                
-                if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
-                    my_list = ['initial_x1', 'initial_x2']
-                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
-
-                    self.optimizer = torch.optim.AdamW([
-                    {'params': base_params},
-                    {'params': params, 'lr': self.lr/10}],
-                        lr=self.lr, amsgrad=True, weight_decay=0.01)
-
-                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[5e-3,1e-3],
-                                                      total_steps=self.total_steps, final_div_factor=1e2,
-                                                                )
-                elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
-                    my_list = ['initial_x1', 'initial_x2']
-                    my_list_B = ['beta', 'B']
-                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                    B_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list_B, self.net.named_parameters()))))
-                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: (kv[0] not in my_list) and (kv[0] not in my_list_B), self.net.named_parameters()))))
-
-                    self.optimizer = torch.optim.AdamW([
-                    {'params': base_params},
-                    {'params': params, 'lr': self.lr/10},
-                    {'params': B_params, 'lr': self.lr/10}],
-                        lr=self.lr, amsgrad=True, weight_decay=0.01)
-                
-#                 if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
-#                     my_list = ['initial_x1', 'initial_x2']                
-#                 elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
-#                     my_list = ['initial_x1', 'initial_x2', 'beta', 'B']     
-#                 params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-#                 base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
-                
-#                 self.optimizer = torch.optim.AdamW([
-#                 {'params': base_params},
-#                 {'params': params, 'lr': self.lr/10}],
-#                     lr=self.lr, amsgrad=True, weight_decay=0.01)
-                self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                    self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
-            
+        
+        if epoch == self.epoch_shift:
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3, 1e-3],
+                                                  total_steps=self.total_steps, final_div_factor=1e2,
+                                                            )
+            print('Shifting to Autoregressive')
+            self.trainable_parameters = \
+                sum(p.numel() for p in self.net.parameters() if p.requires_grad)
+            print('Trainable parameters: '+str(self.trainable_parameters))
+        
+        for (x1, x1out, x2, x2out, time, Da, index) in self.dataloader_train:     
             self.optimizer.zero_grad()
             
             # At the epoch value of self.epoch_shift, switch from purely teacher forcing training to hybrid teacher-forcing and autoregressive training.
             # Switch to OneCycleLR LR rate scheduler
-            if epoch == self.epoch_shift:
-                if self.net.box == 'Black' or self.net.parameter_knowledge == 'Fixed':
-                    my_list = ['initial_x1', 'initial_x2']
-                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] not in my_list, self.net.named_parameters()))))
-
-                    self.optimizer = torch.optim.AdamW([
-                    {'params': base_params},
-                    {'params': params, 'lr': self.lr}],
-                        lr=self.lr, amsgrad=True, weight_decay=0.01)
-
-                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[5e-3,1e-3],
-                                                      total_steps=self.total_steps, final_div_factor=1e2,
-                                                                )
-                elif (self.net.box == 'Grey' or self.net.box == 'Gray') and self.net.parameter_knowledge == 'Trainable':
-                    my_list = ['initial_x1', 'initial_x2']
-                    my_list_B = ['beta', 'B']
-                    params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list, self.net.named_parameters()))))
-                    B_params = list(map(lambda x: x[1],list(filter(lambda kv: kv[0] in my_list_B, self.net.named_parameters()))))
-                    base_params = list(map(lambda x: x[1],list(filter(lambda kv: (kv[0] not in my_list) and (kv[0] not in my_list_B), self.net.named_parameters()))))
-
-                    self.optimizer = torch.optim.AdamW([
-                    {'params': base_params},
-                    {'params': params, 'lr': self.lr},
-                    {'params': B_params, 'lr': self.lr}],
-                        lr=self.lr, amsgrad=True, weight_decay=0.01)
-
-                    self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3, 1e-3],
-                                                      total_steps=self.total_steps, final_div_factor=1e2,
-                                                                )
-                                      
-                print('Shifting to Autoregressive')
-                self.trainable_parameters = \
-                    sum(p.numel() for p in self.net.parameters() if p.requires_grad)
-                print('Trainable parameters: '+str(self.trainable_parameters))
             
             batch_size = x1.size()[0]
             time_length = x1.size()[1]
@@ -756,7 +714,7 @@ class my_Model():
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
                                             time.to(self.device), 
-                                            Da.to(self.device), time_length)
+                                            Da.to(self.device), time_length, index)
             
             # Normalize vectors before loss calculation
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
@@ -778,7 +736,7 @@ class my_Model():
             x1out_hat, x2out_hat = self.net(x1.to(self.device), 
                                             x2.to(self.device), 
                                             time.to(self.device), 
-                                            Da.to(self.device), warmup)
+                                            Da.to(self.device), warmup, index)
             
             # Normalize vectors before loss calculation
             x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
@@ -826,7 +784,7 @@ class my_Model():
         self.net.eval()
         cnt, sum_loss = 0, 0
         with torch.no_grad():
-            for (x1, x1out, x2, x2out, time, Da) in self.dataloader_train:
+            for (x1, x1out, x2, x2out, time, Da, index) in self.dataloader_val:
                 self.optimizer.zero_grad()
                 
                 batch_size = x1.size()[0]
@@ -837,9 +795,9 @@ class my_Model():
                     warmup = 0
                 else:
                     warmup = 1.
-
-                x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup)
-            
+                
+                x1out_hat, x2out_hat = self.net(x1.to(self.device), x2.to(self.device), time.to(self.device), Da.to(self.device), warmup, index=None)
+                
                 # Normalize vectors before loss calculation
                 x1_norm = (x1out - self.x1min) / (self.x1max - self.x1min)
                 x2_norm = ((x2out - self.x2min) / (self.x2max - self.x2min)) 

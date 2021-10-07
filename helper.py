@@ -615,7 +615,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
         x1_in = torch.from_numpy(dataset_test.x1[0]).unsqueeze(0)
         x2_in = torch.from_numpy(dataset_test.x2[0]).unsqueeze(0)
         
-        x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time[0]).unsqueeze(0),Da=torch.tensor(dataset_test.Da).unsqueeze(0))
+        x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time[0]).unsqueeze(0),Da=torch.tensor(dataset_test.Da).unsqueeze(0),index=None)
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)

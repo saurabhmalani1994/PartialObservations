@@ -54,9 +54,9 @@ def main(config):
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],
-                                  shuffle=False, num_workers=1, pin_memory=True)
+                                  shuffle=True, num_workers=1, pin_memory=True)
     dataloader_val = DataLoader(dataset_val, batch_size=config["TRAINING"]["BATCH_SIZE"],
-                                shuffle=False, num_workers=1, pin_memory=True)
+                                shuffle=True, num_workers=1, pin_memory=True)
 
     x1max = np.max(np.array(dataset_train.x1))
     x1min = np.min(np.array(dataset_train.x1)[np.array(dataset_train.x1)>0])
