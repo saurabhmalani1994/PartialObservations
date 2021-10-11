@@ -24,16 +24,16 @@ import torch.jit as jit
 config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
-config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 11
+# config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
+config["DATA"]["N_TRAIN"] = 11 # Num of training traj
 config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1
-config["DATA"]["X1_SAMPLE_NUM"] = 12
+config["DATA"]["X1_SAMPLE_NUM"] = 12 # Num of pts per traj
 config["DATA"]["X2_SAMPLE_NUM"] = 12
-config["DATA"]["MAX_DELTA_T"] = 0.1
-config["DATA"]["REG_TIME"] = False   # True for regular sampling in time, False for random sampling in time
+config["DATA"]["MAX_DELTA_T"] = 0.1 # Timestep in integrator
+config["DATA"]["REG_TIME"] = False   # True for regular sampling in time (Delta_T = const), False for random sampling in time Uniform~ (0, Delta_T)
 config["DATA"]["INIT_AVAILABLE"] = False   # True for ALL initial conditions available at time 0, False for Not available
 
 config["PAR"] = {}
@@ -107,7 +107,6 @@ def integrate_cstr(tmin=0, tmax=20, T=2000, y0=None, verbose=False, Da=0.25, B=1
 
 
 class CSTRDataset(torch.utils.data.Dataset):
-    """Dataset of transients obtained from a Brusselator."""
 
     def __init__(self, n_train, tmax, l_trajectories, Da=0.25, B=11, beta=3, maxdt=0.2, random=False, x1_sample_num=50, x2_sample_num=50, skip_time=1, reg_time=True, inference=False):
         self.ids = np.arange(n_train)
@@ -358,7 +357,7 @@ class Network(jit.ScriptModule):
         #         self.activation = nn.Tanh()
         #         self.activation = nn.SELU()
         
-        self.sigmoid = nn.Sigmoid()
+#         self.sigmoid = nn.Sigmoid() # !!!
         
         if self.parameter_knowledge == 'Fixed' or self.box == 'Black':
             self.B = nn.Parameter(torch.tensor(B/100), requires_grad = False)
@@ -367,20 +366,28 @@ class Network(jit.ScriptModule):
             self.B = nn.Parameter(torch.tensor(10./100), requires_grad = True)
             self.beta = nn.Parameter(torch.tensor(5./100), requires_grad = True)
         else:
-            assert False ,'Tell me whether or not to train the parameters'
+            raise ValueError('Tell me whether or not to train the parameters')
         
         
     @jit.script_method
     def network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor) -> Tensor:
+    """
+    x1_input.shape = (batch_size, traj_len)
+    x2_input.shape = (batch_size, traj_len)
+    TODO: generalize for high dim cases
+    Da: (batch_size, ) TODO: (batch_size, traj, para_dim)
+   
+    """
 #         if self.box == 'White':
 #             a=1
 #             return self.WhiteBox(x1_input, x2_input, Da)
 #         else:
-        x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min)
+        #TODO: generalized normalization of inputs
+        x1_input_norm = (x1_input - self.x1min) / (self.x1max - self.x1min) #TODO: variable normalization
         x2_input_norm = (x2_input - self.x2min) / (self.x2max - self.x2min)
-        Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+        Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2) #TODO: para normalization
 
-        ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
+        ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1) #(batch_size, traj, 3)
 
         for layer in self.layers:
             ANN_input = layer(ANN_input)
@@ -408,12 +415,18 @@ class Network(jit.ScriptModule):
         return output
     
     @jit.script_method
+    # TODO: change the formula based on actual physics of the model
+    # TODO: Restructure so model-specific grey boxes are Subclasses
     def GreyBox(self, x1: Tensor, x2: Tensor, ANN_output: Tensor) -> Tensor:
         phi = ANN_output[...,0] * torch.pow(2.,self.ANNPower1*7)  # phi = Da * (1-x1) * np.exp(x2)
-        #         phi = ANN_output[...,0] * 10  # phi = Da * (1-x1) * np.exp(x2)
 
+        #         phi = Da * (1-x1) * np.exp(x2) --- The network should find
         #         dx1dt = -x1 + Da * (1-x1) * np.exp(x2)
         #         dx2dt = -x2 + B * Da * (1-x1) * np.exp(x2) - beta * x2
+        
+#         @property
+#         def B(self):
+#             return self.B_scale * self.Bi       
         
         dx1dt = - x1 + phi
         dx2dt = - x2 + (self.B*100) * phi - (self.beta*100) * x2
@@ -446,7 +459,8 @@ class Network(jit.ScriptModule):
         
         x1_out = x1 + (dt/2) * (k1[...,0] + k2[...,0])
         x2_out = x2 + (dt/2) * (k1[...,1] + k2[...,1])
-    
+        
+        # TODO: Explain in one of our papers why we clipped (exploding outputs), and why we were able to stop clipping (better param input).
         #         x1_out = torch.clip(x1_out, min = 0, max = self.x1max*1000)
         #         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
         return x1_out, x2_out
@@ -476,7 +490,8 @@ class Network(jit.ScriptModule):
         #         x2_out = torch.clip(x2_out, min = 0, max = self.x2max*1000)
 
         return x1_out, x2_out
-    
+
+# TODO: Add logic to use forward_full only when it works.
 #     @jit.script_method
 #     def forward_full(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float index: Optional[int]) -> Tuple[Tensor, Tensor]:
 #         """Forward pass"""
@@ -499,10 +514,11 @@ class Network(jit.ScriptModule):
     
     @jit.script_method
     def forward_manual(self, x1: Tensor, x2: Tensor, dt: Tensor, Da: Tensor, warmup: float, index: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
+        # index for minibatch
         """Forward pass"""
         # x1 = (N, T, 1) N-batches, T-time, dim 1
         
-        x1_inputs = x1.unbind(1)
+        x1_inputs = x1.unbind(1) # tuple of (N, 1): T elements
         x2_inputs = x2.unbind(1)
         dt_inputs = dt.unbind(1)
         Da_input = Da#.squeeze(-1)
@@ -512,6 +528,7 @@ class Network(jit.ScriptModule):
 #         x1_out.append(self.initial_x1.squeeze(1))
 #         x2_out.append(self.initial_x2.squeeze(1))
         if index is not None:
+            # TODO: Use NaN to mark invalid data instead of negative.
             x1_out.append(torch.where(x1_inputs[0]>0,x1_inputs[0],
                                       self.initial_x1.squeeze(1)[index] * (self.x1max - self.x1min) + self.x1min))
             x2_out.append(torch.where(x2_inputs[0]>0,x2_inputs[0],
@@ -520,10 +537,12 @@ class Network(jit.ScriptModule):
             x1_out.append(x1_inputs[0])
             x2_out.append(x2_inputs[0])
         
+        # TODO: remove switch
         switch = int(len(x1_inputs) * warmup) # (1-warmup)
         for j in range(len(x1_inputs)):
 #             if torch.remainder(torch.tensor(j),torch.tensor(switch)) < 1:
             if j < switch: # Teacher Forcing
+                # TODO: If data is available, use that as input to this step; otherwise use the previous prediction.
                 x1_input = torch.where(x1_inputs[j]>0,x1_inputs[j],x1_out[j])
                 x2_input = torch.where(x2_inputs[j]>0,x2_inputs[j],x2_out[j])
             else: # Autoregressive
@@ -595,10 +614,8 @@ class my_Model():
 
         self.net = network.to(self.device)
 
-        self.trainable_parameters = \
+        trainable_parameters = \
             sum(p.numel() for p in self.net.parameters() if p.requires_grad)
-
-        print('Trainable parameters: '+str(self.trainable_parameters))
 
         self.dataloader_train = dataloader_train
         self.dataloader_val = dataloader_val
@@ -626,7 +643,7 @@ class my_Model():
 
         self.trainable_parameters = \
             sum(p.numel() for p in self.net.parameters() if p.requires_grad)
-
+        print('We have gained', self.trainable_parameters - trainable_parameters, 'initial state parameters')
         print('Network is initialized with trainable parameter')
         print('Trainable parameters: '+str(self.trainable_parameters))
 

@@ -65,7 +65,7 @@ def main(config):
     x2min = np.min(np.array(dataset_train.x2)[np.array(dataset_train.x2)>0])
     
     f = open('minmax/maxmin.txt','w')  # w : writing mode  /  r : reading mode  /  a  :  appending mode
-    f.write('{}\n'.format(x1max))
+    f.write('{}\n'.format(x1max)) # TODO: Save as pickle / .npz file
     f.write('{}\n'.format(x1min))
     f.write('{}\n'.format(x2max))
     f.write('{}\n'.format(x2min))
@@ -110,17 +110,17 @@ def main(config):
     train_loss_list = []
     val_loss_list = []
     
-    print('True initial x1/x2')
-    x1_init = []
-    x2_init = []
-    for i in range(len(dataset_train.x1_data)):
-        x1_init.append(dataset_train.x1_data[i][0])
-        x2_init.append(dataset_train.x2_data[i][0])
-    print(np.array(x1_init))
-    print(np.array(x2_init))
-#     assert False
-    print('myDas')
-    print(dataset_train.Da)
+#     print('True initial x1/x2')
+#     x1_init = []
+#     x2_init = []
+#     for i in range(len(dataset_train.x1_data)):
+#         x1_init.append(dataset_train.x1_data[i][0])
+#         x2_init.append(dataset_train.x2_data[i][0])
+#     print(np.array(x1_init))
+#     print(np.array(x2_init))
+# #     assert False
+#     print('myDas')
+#     print(dataset_train.Da)
     
     for epoch in progress_bar:
         train_loss = model.train(epoch)
