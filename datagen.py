@@ -79,17 +79,38 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
     else:
         Da_base = np.linspace(0.2,0.5,10)
     Da = np.random.choice(Da_base, n_train, replace=True)
+    
+    solver_times_arr = []
+    x1_times_arr = []
+    x2_times_arr = []
+    
+    for i in range(n_train):
+        if reg_time:
+            x1_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
+            x2_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
+        else:
+            mu, sigma = dt_dist
+            rng = np.random.default_rng()
+            x1_times, x2_times = [], []
+            if init_available:
+                k = (mu/sigma) ** 2
+                theta = mu/k
+                x1_times.append(skip_time)
+                x2_times.append(skip_time)
+            else:
+                mu = mu * (max(x1_sample_num, x2_sample_num) - 1) / max(x1_sample_num, x2_sample_num)
+                k = (mu/sigma) ** 2
+                theta = mu/k
+                x1_times.append(skip_time + np.abs(rng.gamma(k, theta)))
+                x2_times.append(skip_time + np.abs(rng.gamma(k, theta)))
+            while len(x1_times) < x1_sample_num:
+                x1_times.append(x1_times[-1] + np.abs(rng.gamma(k, theta)))
+            while len(x2_times) < x2_sample_num:
+                x2_times.append(x2_times[-1] + np.abs(rng.gamma(k, theta)))
+            x1_times_arr.append(np.array(x1_times).round(decimals=5))
+            x2_times_arr.append(np.array(x2_times).round(decimals=5))
 
-    if reg_time:
-        x1_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
-        x2_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
-    else:
-        x1_times = np.sort(np.random.uniform(skip_time, tmax+skip_time, x1_sample_num)).round(decimals=5)
-        if full_observations: x2_times = x1_times
-        else: x2_times = np.sort(np.random.uniform(skip_time, tmax+skip_time, x1_sample_num)).round(decimals=5)
-        
-            
-    solver_times = np.sort(np.unique(np.concatenate(([skip_time], x1_times, x2_times))))
+        solver_times_arr.append(np.sort(np.unique(np.concatenate(([skip_time], x1_times_arr[i], x2_times_arr[i])))))
     
     output = np.zeros((n_train,2), dtype=object)
     if detail:
@@ -97,14 +118,14 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
         output_detail_t = np.zeros((n_train,1000), dtype=object)
     
     for i in tqdm(range(n_train), leave=True, position=0):
-        sol = integrate_cstr(tmin=0, tmax=tmax+skip_time+0.1, Da=Da[i], B=B, beta=beta, teval=solver_times)
+        sol = integrate_cstr(tmin=0, tmax=max(solver_times_arr[i]), Da=Da[i], B=B, beta=beta, teval=solver_times_arr[i])
             
         # Extra copy of solution at higher time resolution for better plotting of 'true' trajectory        
-        output[i,0] = (sol.y[0, np.in1d(sol.t.round(decimals=5),x1_times)], x1_times - skip_time)
-        output[i,1] = (sol.y[1, np.in1d(sol.t.round(decimals=5),x2_times)], x2_times - skip_time)
+        output[i,0] = (sol.y[0, np.in1d(sol.t.round(decimals=5),x1_times_arr[i])], x1_times_arr[i] - skip_time)
+        output[i,1] = (sol.y[1, np.in1d(sol.t.round(decimals=5),x2_times_arr[i])], x2_times_arr[i] - skip_time)
         
         if detail:
-            sol_detail = integrate_cstr(tmin=skip_time, tmax=tmax+skip_time, Da=Da[i], B=B, beta=beta, teval=np.linspace(skip_time,tmax+skip_time,1000), y0 = sol.y[:,0])
+            sol_detail = integrate_cstr(tmin=skip_time, tmax=max(solver_times_arr[i]), Da=Da[i], B=B, beta=beta, teval=np.linspace(skip_time,max(solver_times_arr[i]),1000), y0 = sol.y[:,0])
 
             output_detail[i,0,:] = sol_detail.y[0,:]
             output_detail[i,1,:] = sol_detail.y[1,:]
