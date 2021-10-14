@@ -16,7 +16,13 @@ torch.set_default_dtype(torch.double)
 from torch import Tensor
 import torch.jit as jit
 
-from utils import f_cstr, get_pars, integrate_cstr, Network, config, CSTRDataset
+from datagen import f_cstr, get_pars
+from utils import Network, MLP
+from config import config
+import datagen
+import preprocess
+
+# from utils import f_cstr, get_pars, integrate_cstr, Network, config, CSTRDataset
 
 def myf_cstr_torch(t, y, Da, beta, B):
     """Time derivatives of the CSTR model."""
@@ -363,29 +369,29 @@ def make_Bifurc_prediction(verbose=False):
     
 def load_network():
     
-    f = open('minmax/maxmin.txt', 'r')
-    x1max = float(f.readline())
-    x1min = float(f.readline())
-    x2max = float(f.readline())
-    x2min = float(f.readline())
-    f.close()
-
-    minmaxes = (x1min,x1max,x2min,x2max)
+#     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-        # Create the network architecture
-    network = Network(hidden_cells=config["MODEL"]["NUM_HIDDEN"],
-                          B=config["PAR"]["B"],
-                          beta=config["PAR"]["beta"],
-                          Da=config["PAR"]["Da"],
-                          minmaxes=minmaxes,
-                  batch=config["DATA"]["N_TRAIN"]
-                         )
+    f = np.load("minmax/minmax.npz")
+    
+    xmax = f['arr_0']
+    xmin = f['arr_1']
+    print(xmax)
+    print(xmin)
+    
+    norm_func = lambda input, device: (input - torch.tensor(xmin).float().to(device)) / \
+                            torch.tensor((xmax - xmin)).float().to(device)
+    inv_norm_func = lambda input, device: input * torch.tensor((xmax - xmin)).float().to(device) \
+                                  + torch.tensor(xmin).float().to(device)
+
+    # Create the network architecture
+    mlp = MLP(3, [64, 64], 2)
+    network = Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+                      init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
     device = 'cpu'
+    
 
 
-    filename = config["DATA"]["PATH"]+'model_' +\
-        '_hidden_layers_' +\
-                str(len(network.hidden_cells))+'_'+str(network.hidden_cells[0])+'.net'
+    filename = config["DATA"]["PATH"]+'model_' + '.net'
 
     print(filename)
 
@@ -399,8 +405,7 @@ def load_network():
 
 #         model_dict.update(chosen_dict)
     state_dict = torch.load(filename, map_location=torch.device(device))
-    state_dict.pop('initial_x1')
-    state_dict.pop('initial_x2')
+#     state_dict.pop('initial_x')
 #         network.load_state_dict(torch.load(filename, map_location=torch.device(device)))
     network.load_state_dict(state_dict, strict=False)
 #     network.initial_x1 = torch.tensor(dataset_test.x1[0][0]/2).unsqueeze(0).unsqueeze(0)
@@ -546,105 +551,112 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
     
     for i in range(len(Da_list)):
         Da = Da_list[i]
-        
-        dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"]*5,
-                               config["DATA"]["L_TRAJECTORIES"]*5, 
-                               Da=Da,
-                               B=config["PAR"]["B"],
-                            maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*5,
-                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*5,
-                                skip_time=config["DATA"]["SKIP_TIME"],
-                               beta=config["PAR"]["beta"],
-                               reg_time=config["DATA"]["REG_TIME"],
-                                  inference=True)
 
-        network.initial_x1 = torch.tensor((dataset_test.x1[0][0]-network.x1min)/(network.x1max - network.x1min)).unsqueeze(0).unsqueeze(0)
-        network.initial_x2 = torch.tensor((dataset_test.x2[0][0]-network.x2min)/(network.x2max - network.x2min)).unsqueeze(0).unsqueeze(0)
+        data_test = datagen.generate_data(n_train=config["DATA"]["N_TEST"],
+                                              tmax=config["DATA"]["TMAX"]*6,                
+                                              x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*6,
+                                              x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*6, 
+                                        init_available=True,
+                                        Da_random=False,
+                                        Da_set=Da,
+                                         detail=True)
+        dataset_test = preprocess.Dataset(*data_test[:2])
+        output_detail_t, output_detail = data_test[2:]
         
-        def my_ode(t, y, Da):
-            x1 = torch.from_numpy(y[...,0]).unsqueeze(0).unsqueeze(0)
-            x2 = torch.from_numpy(y[...,1]).unsqueeze(0).unsqueeze(0)
-            Da = torch.tensor(Da)
+#         print('shapes')
+#         print(output_detail_t.shape)
+#         print(output_detail.shape)
+
+        network.initial_x = network.norm_func(torch.tensor(dataset_test.x).to(network.device))
+        
+        def my_ode(t, y, p):
+#             print()
+#             y_in = torch.cat((network.norm_func(torch.tensor(y).to(network.device)),
+#                                torch.tensor(p).to(network.device)), dim=-1)
             
-            dxdt = network.network(x1,x2,Da)
+            dxdt = network.output(torch.tensor(y).to(network.device),
+                                  torch.tensor(p).to(network.device))
             
             return dxdt.detach().cpu().squeeze().numpy()
         
-        y_in = np.stack((dataset_test.x1[0][0],dataset_test.x2[0][0]),axis=-1)
-        solver_time = np.linspace(0,dataset_test.time[0][-1],1000)
-        sol = solve_ivp(my_ode,[0,dataset_test.time[0][-1]], y_in, args=(dataset_test.Da,), t_eval = solver_time,
+#         print('Dataset Shape')
+#         print(dataset_test.x.shape)
+#         print(dataset_test.full_times_arr[0].shape)
+        
+        y_in = dataset_test.x[0,0,:]
+        solver_time = np.linspace(0,dataset_test.full_times_arr[0][-1],1000)
+        sol = solve_ivp(my_ode,[0,dataset_test.full_times_arr[0][-1]], y_in, args=(dataset_test.p[0,0,:],), t_eval = solver_time,
                     rtol=1e-5, atol=1e-8)
         
         x1_out = sol.y[0,:]
         x2_out = sol.y[1,:]
         
         fig = plt.figure(figsize=(20,10))
+#         fig = plt.figure(figsize=(15,5))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-        ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
+        ax.plot(dataset_test.full_times_arr[0][~np.isnan(dataset_test.x[0,:,0])],dataset_test.x[0,:,0][~np.isnan(dataset_test.x[0,:,0])],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(output_detail_t[0,:], output_detail[0,0,:],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x1_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_1$',fontsize=40)
         plt.yticks(fontsize=25)
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
-        plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
-        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da[0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
+        plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.p[0,0,0]),fontsize=30)
+        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
         plt.show()
         plt.close()
 
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-#         ax.plot(dataset_test.time[1:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
+        ax.plot(dataset_test.full_times_arr[0][~np.isnan(dataset_test.x[0,:,1])],dataset_test.x[0,:,1][~np.isnan(dataset_test.x[0,:,1])],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+        ax.plot(output_detail_t[0,:], output_detail[0,1,:],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x2_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_2$',fontsize=40)
         plt.yticks(fontsize=25)
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
-        plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
-        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
+        plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.p[0,0,0]),fontsize=30)
+        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
         plt.show()
         plt.close()
         
 #         
 
-        x1_in = torch.from_numpy(dataset_test.x1[0]).unsqueeze(0)
-        x2_in = torch.from_numpy(dataset_test.x2[0]).unsqueeze(0)
+#         x1_in = torch.from_numpy(dataset_test.x1[0]).unsqueeze(0)
+#         x2_in = torch.from_numpy(dataset_test.x2[0]).unsqueeze(0)
         
-        x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time[0]).unsqueeze(0),Da=torch.tensor(dataset_test.Da).unsqueeze(0),index=None)
+#         x1_out, x2_out = network(x1_in,x2_in,warmup=0,time=torch.tensor(dataset_test.time[0]).unsqueeze(0),Da=torch.tensor(dataset_test.Da).unsqueeze(0),index=None)
 
-        fig = plt.figure(figsize=(20,10))
-        ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-        ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[0][:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
-        ax.set_xlabel(r'$t$',fontsize=40)
-        ax.set_ylabel(r'$X_1$',fontsize=40)
-        plt.yticks(fontsize=25)
-        plt.xticks(fontsize=25)
-        plt.legend(fontsize=20,loc='upper left')
-        plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
-        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
-        plt.show()
-        plt.close()
+#         fig = plt.figure(figsize=(20,10))
+#         ax = fig.add_subplot(111)
+#         ax.plot(dataset_test.time[0][:][dataset_test.x1_out[0]>0],dataset_test.x1_out[0][dataset_test.x1_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+#         ax.plot(dataset_test.time_detail,dataset_test.x1_data_detail[0],'k',label='true trajectory',linewidth=3)
+#         ax.plot(dataset_test.time[0][:],x1_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+#         ax.set_xlabel(r'$t$',fontsize=40)
+#         ax.set_ylabel(r'$X_1$',fontsize=40)
+#         plt.yticks(fontsize=25)
+#         plt.xticks(fontsize=25)
+#         plt.legend(fontsize=20,loc='upper left')
+#         plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
+#         fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
+#         plt.show()
+#         plt.close()
 
 
-        fig = plt.figure(figsize=(20,10))
-        ax = fig.add_subplot(111)
-        ax.plot(dataset_test.time[0][:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-        ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
-        ax.plot(dataset_test.time[0][:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
-        ax.set_xlabel(r'$t$',fontsize=40)
-        ax.set_ylabel(r'$X_2$',fontsize=40)
-        plt.yticks(fontsize=25)
-        plt.xticks(fontsize=25)
-        plt.legend(fontsize=20,loc='upper left')
-        plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
-        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
-        plt.show()
-        plt.close()
+#         fig = plt.figure(figsize=(20,10))
+#         ax = fig.add_subplot(111)
+#         ax.plot(dataset_test.time[0][:][dataset_test.x2_out[0]>0],dataset_test.x2_out[0][dataset_test.x2_out[0]>0],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
+#         ax.plot(dataset_test.time_detail,dataset_test.x2_data_detail[0],'k',label='true trajectory',linewidth=3)
+#         ax.plot(dataset_test.time[0][:],x2_out.detach().cpu().squeeze().numpy(),'x-',label='predicted',linewidth=3)
+#         ax.set_xlabel(r'$t$',fontsize=40)
+#         ax.set_ylabel(r'$X_2$',fontsize=40)
+#         plt.yticks(fontsize=25)
+#         plt.xticks(fontsize=25)
+#         plt.legend(fontsize=20,loc='upper left')
+#         plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
+#         fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
+#         plt.show()
+#         plt.close()
         

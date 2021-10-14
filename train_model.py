@@ -11,88 +11,89 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 
-
-from utils import CSTRDataset, Network, my_Model, progress, config
+from utils import Network, MLP, Model_Train, progress
+import preprocess
+import datagen
+from config import config
 # from utils import CSTRDataset, LSTMNetwork, LSTMModel, progress, config
 
 
 def main(config):
     # Create CSTR Datasets, which are required for the data loader.
-    dataset_train = CSTRDataset(config["DATA"]["N_TRAIN"], config["DATA"]["TMAX"],
-                                config["DATA"]["L_TRAJECTORIES"], 
-                           Da=config["PAR"]["Da"],
-                           B=config["PAR"]["B"],
-                            maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-                                skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"],
-                               reg_time=config["DATA"]["REG_TIME"],
-                               inference=config["DATA"]["INIT_AVAILABLE"])
-    dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
-                              config["DATA"]["L_TRAJECTORIES"], 
-                           Da=config["PAR"]["Da"],
-                           B=config["PAR"]["B"],
-                            maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-                                skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"], random=True,
-                             reg_time=config["DATA"]["REG_TIME"],
-                               inference=True)
-    dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
-                           config["DATA"]["L_TRAJECTORIES"], 
-                           Da=config["PAR"]["Da"],
-                           B=config["PAR"]["B"],
-                            maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-                                skip_time=config["DATA"]["SKIP_TIME"],
-                           beta=config["PAR"]["beta"],
-                              reg_time=config["DATA"]["REG_TIME"],
-                               inference=True)
+#     dataset_train = CSTRDataset(config["DATA"]["N_TRAIN"], config["DATA"]["TMAX"],
+#                                 config["DATA"]["L_TRAJECTORIES"], 
+#                            Da=config["PAR"]["Da"],
+#                            B=config["PAR"]["B"],
+#                             maxdt=config["DATA"]["MAX_DELTA_T"],
+#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
+#                                 skip_time=config["DATA"]["SKIP_TIME"],
+#                            beta=config["PAR"]["beta"],
+#                                reg_time=config["DATA"]["REG_TIME"],
+#                                inference=config["DATA"]["INIT_AVAILABLE"])
+#     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
+#                               config["DATA"]["L_TRAJECTORIES"], 
+#                            Da=config["PAR"]["Da"],
+#                            B=config["PAR"]["B"],
+#                             maxdt=config["DATA"]["MAX_DELTA_T"],
+#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
+#                                 skip_time=config["DATA"]["SKIP_TIME"],
+#                            beta=config["PAR"]["beta"], random=True,
+#                              reg_time=config["DATA"]["REG_TIME"],
+#                                inference=True)
+#     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
+#                            config["DATA"]["L_TRAJECTORIES"], 
+#                            Da=config["PAR"]["Da"],
+#                            B=config["PAR"]["B"],
+#                             maxdt=config["DATA"]["MAX_DELTA_T"],
+#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
+#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
+#                                 skip_time=config["DATA"]["SKIP_TIME"],
+#                            beta=config["PAR"]["beta"],
+#                               reg_time=config["DATA"]["REG_TIME"],
+#                                inference=True)
+
+    data_train = datagen.generate_data(n_train=config["DATA"]["N_TRAIN"])
+    dataset_train = preprocess.Dataset(*data_train)
+    data_val = datagen.generate_data(n_train=config["DATA"]["N_VAL"],
+                                    init_available=True,
+                                    Da_random=True)
+    dataset_val = preprocess.Dataset(*data_val)
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],
                                   shuffle=True, num_workers=1, pin_memory=True)
     dataloader_val = DataLoader(dataset_val, batch_size=config["TRAINING"]["BATCH_SIZE"],
                                 shuffle=True, num_workers=1, pin_memory=True)
-
-    x1max = np.max(np.array(dataset_train.x1))
-    x1min = np.min(np.array(dataset_train.x1)[np.array(dataset_train.x1)>0])
-
-    x2max = np.max(np.array(dataset_train.x2))
-    x2min = np.min(np.array(dataset_train.x2)[np.array(dataset_train.x2)>0])
     
-    f = open('minmax/maxmin.txt','w')  # w : writing mode  /  r : reading mode  /  a  :  appending mode
-    f.write('{}\n'.format(x1max)) # TODO: Save as pickle / .npz file
-    f.write('{}\n'.format(x1min))
-    f.write('{}\n'.format(x2max))
-    f.write('{}\n'.format(x2min))
-    f.close()
     
-    minmaxes = (x1min, x1max, x2min, x2max)
+    xmax = np.nanmax(np.nanmax(np.array(dataset_train.x), axis=1), axis=0)
+    xmin = np.nanmin(np.nanmin(np.array(dataset_train.x), axis=1), axis=0)
+    xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-#     plt.figure()
-#     plt.plot(dataset_train.tt[:-1][dataset_train.x1[0]>0],dataset_train.x1[0][dataset_train.x1[0]>0],'x-')
-#     plt.xlabel('Time')
-#     plt.ylabel('x1')
+    print('maxmins')
+    print(xmax)
+    print(xmin)
     
-#     plt.figure()
-#     plt.plot(dataset_train.tt[:-1],dataset_train.x2[0],'x-')
-#     plt.xlabel('Time')
-#     plt.ylabel('x2')
+    norm_func = lambda input, device: (input - torch.tensor(xmin).float().to(device)) / \
+                            torch.tensor((xmax - xmin)).float().to(device)
+    inv_norm_func = lambda input, device: input * torch.tensor((xmax - xmin)).float().to(device) \
+                                  + torch.tensor(xmin).float().to(device)
     
-#     assert(False)
+    
+#     norm_func_test = lambda input: (input - torch.tensor(xmin)) / torch.tensor((xmax - xmin))
+    
+#     testx = torch.tensor(dataset_train.x)
+#     print(testx.shape)
+#     print(torch.tensor(xmin).shape)
+#     assert False
     
     # Create the network architecture
-    network = Network(hidden_cells=config["MODEL"]["NUM_HIDDEN"],
-                      B=config["PAR"]["B"],
-                      beta=config["PAR"]["beta"],
-                      Da=config["PAR"]["Da"],
-                      minmaxes=minmaxes,
-                      batch=config["DATA"]["N_TRAIN"]
-                     )
+    mlp = MLP(3, [64, 64], 2)
+    network = Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+                      init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
+    
     print(network)
     # Move network to corresponding device (cpu or gpu)
     network.to(network.device)
@@ -101,7 +102,7 @@ def main(config):
 
     # Create model wrapper around architecture
     # Contains train and validation functions
-    model = my_Model(dataloader_train, dataloader_val, network,
+    model = Model_Train(dataloader_train, dataloader_val, network,
                       learning_rate=config["TRAINING"]["LEARNING_RATE"])
 
     # Train for the given number of epochs
@@ -110,25 +111,17 @@ def main(config):
     train_loss_list = []
     val_loss_list = []
     
-#     print('True initial x1/x2')
-#     x1_init = []
-#     x2_init = []
-#     for i in range(len(dataset_train.x1_data)):
-#         x1_init.append(dataset_train.x1_data[i][0])
-#         x2_init.append(dataset_train.x2_data[i][0])
-#     print(np.array(x1_init))
-#     print(np.array(x2_init))
-# #     assert False
-#     print('myDas')
-#     print(dataset_train.Da)
-    
     for epoch in progress_bar:
         train_loss = model.train(epoch)
         val_loss = model.validate(epoch)
         train_loss_list.append(train_loss)
         val_loss_list.append(val_loss)
         progress_bar.set_description(progress(train_loss, val_loss))
+#         if epoch == 2:
+#             assert False
+        
     model.save_network(config["DATA"]["PATH"]+'model_')
+        
 
 
 

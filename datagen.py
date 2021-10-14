@@ -1,11 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
-
 from scipy.integrate import solve_ivp
-
 from tqdm.auto import tqdm
-
 from config import config
+
+np.random.seed(1234)
 
 def cstr_initial_conditions(ic='random'):
     if ic == 'random':
@@ -72,13 +70,32 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
                   full_observations=True,
                   Da_random=False,
                   detail=False,
+                  Da_set=0.33,
                  ):
     
-    if Da_random:
-        Da_base = np.random.uniform(0.2,0.5,10)   
+    """ 
+    Outputs parameter array of shape (n x dp). Each element of this object array is a tuple (p,t).
+    p and t are numpy arrays of shape (Tp,). 
+    p is array of time steps of parameter change, and t the corresponding times.
+    Parameter values are assumed to be constant until next specified update time
+    
+    Outputs data object array of shape (n x dx). Each element of this object array is a tuple (x, t). 
+    x and t are numpy arrays of shape (Tx,). 
+    x is array of observations of the variable, and t the corresponding times for each of the observations. 
+    
+    Optionally outputs high temporal resolution t (shape n x dx x T=1000) and x (shape n x dx x T=1000) numpy arrays for plotting of ground truth trajectories.
+    """
+    Da_rng = np.random.default_rng(seed = 2341)
+    dt_rng = np.random.default_rng(seed = 3412)
+    
+    if n_train == 1:
+        Da = [Da_set]
     else:
-        Da_base = np.linspace(0.2,0.5,10)
-    Da = np.random.choice(Da_base, n_train, replace=True)
+        if Da_random:
+            Da_base = Da_rng.uniform(0.2,0.5,10)   
+        else:
+            Da_base = np.linspace(0.2,0.5,10)
+        Da = Da_rng.choice(Da_base, n_train, replace=True)
     
     solver_times_arr = []
     x1_times_arr = []
@@ -86,11 +103,12 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
     
     for i in range(n_train):
         if reg_time:
-            x1_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
-            x2_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num).round(decimals=5)
+            x1_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num)
+            x2_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num)
+            x1_times_arr.append(np.array(x1_times).round(decimals=5))
+            x2_times_arr.append(np.array(x2_times).round(decimals=5))
         else:
             mu, sigma = dt_dist
-            rng = np.random.default_rng()
             x1_times, x2_times = [], []
             if init_available:
                 k = (mu/sigma) ** 2
@@ -101,18 +119,18 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
                 mu = mu * (max(x1_sample_num, x2_sample_num) - 1) / max(x1_sample_num, x2_sample_num)
                 k = (mu/sigma) ** 2
                 theta = mu/k
-                x1_times.append(skip_time + np.abs(rng.gamma(k, theta)))
-                x2_times.append(skip_time + np.abs(rng.gamma(k, theta)))
+                x1_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
+                x2_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
             while len(x1_times) < x1_sample_num:
-                x1_times.append(x1_times[-1] + np.abs(rng.gamma(k, theta)))
+                x1_times.append(x1_times[-1] + np.abs(dt_rng.gamma(k, theta)))
             while len(x2_times) < x2_sample_num:
-                x2_times.append(x2_times[-1] + np.abs(rng.gamma(k, theta)))
+                x2_times.append(x2_times[-1] + np.abs(dt_rng.gamma(k, theta)))
             x1_times_arr.append(np.array(x1_times).round(decimals=5))
             x2_times_arr.append(np.array(x2_times).round(decimals=5))
-
         solver_times_arr.append(np.sort(np.unique(np.concatenate(([skip_time], x1_times_arr[i], x2_times_arr[i])))))
     
     output = np.zeros((n_train,2), dtype=object)
+    Da_output = np.zeros((n_train,1), dtype=object)
     if detail:
         output_detail = np.zeros((n_train,2,1000), dtype=object)
         output_detail_t = np.zeros((n_train,1000), dtype=object)
@@ -123,6 +141,7 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
         # Extra copy of solution at higher time resolution for better plotting of 'true' trajectory        
         output[i,0] = (sol.y[0, np.in1d(sol.t.round(decimals=5),x1_times_arr[i])], x1_times_arr[i] - skip_time)
         output[i,1] = (sol.y[1, np.in1d(sol.t.round(decimals=5),x2_times_arr[i])], x2_times_arr[i] - skip_time)
+        Da_output[i,0] = (np.array([Da[i]]), np.array([skip_time]) - skip_time)
         
         if detail:
             sol_detail = integrate_cstr(tmin=skip_time, tmax=max(solver_times_arr[i]), Da=Da[i], B=B, beta=beta, teval=np.linspace(skip_time,max(solver_times_arr[i]),1000), y0 = sol.y[:,0])
@@ -132,6 +151,6 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
             output_detail_t[i,:] = sol_detail.t - skip_time
         
     if detail:
-        return Da, output, output_detail_t, output_detail
+        return output, Da_output, output_detail_t, output_detail
     else:
-        return Da, output
+        return output, Da_output
