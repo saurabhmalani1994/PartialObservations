@@ -19,41 +19,6 @@ from config import config
 
 
 def main(config):
-    # Create CSTR Datasets, which are required for the data loader.
-#     dataset_train = CSTRDataset(config["DATA"]["N_TRAIN"], config["DATA"]["TMAX"],
-#                                 config["DATA"]["L_TRAJECTORIES"], 
-#                            Da=config["PAR"]["Da"],
-#                            B=config["PAR"]["B"],
-#                             maxdt=config["DATA"]["MAX_DELTA_T"],
-#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-#                                 skip_time=config["DATA"]["SKIP_TIME"],
-#                            beta=config["PAR"]["beta"],
-#                                reg_time=config["DATA"]["REG_TIME"],
-#                                inference=config["DATA"]["INIT_AVAILABLE"])
-#     dataset_val = CSTRDataset(config["DATA"]["N_VAL"], config["DATA"]["TMAX"],
-#                               config["DATA"]["L_TRAJECTORIES"], 
-#                            Da=config["PAR"]["Da"],
-#                            B=config["PAR"]["B"],
-#                             maxdt=config["DATA"]["MAX_DELTA_T"],
-#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-#                                 skip_time=config["DATA"]["SKIP_TIME"],
-#                            beta=config["PAR"]["beta"], random=True,
-#                              reg_time=config["DATA"]["REG_TIME"],
-#                                inference=True)
-#     dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"],
-#                            config["DATA"]["L_TRAJECTORIES"], 
-#                            Da=config["PAR"]["Da"],
-#                            B=config["PAR"]["B"],
-#                             maxdt=config["DATA"]["MAX_DELTA_T"],
-#                                 x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"],
-#                                 x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"],
-#                                 skip_time=config["DATA"]["SKIP_TIME"],
-#                            beta=config["PAR"]["beta"],
-#                               reg_time=config["DATA"]["REG_TIME"],
-#                                inference=True)
-
     data_train = datagen.generate_data(n_train=config["DATA"]["N_TRAIN"])
     dataset_train = preprocess.Dataset(*data_train)
     data_val = datagen.generate_data(n_train=config["DATA"]["N_VAL"],
@@ -80,14 +45,6 @@ def main(config):
                             torch.tensor((xmax - xmin)).float().to(device)
     inv_norm_func = lambda input, device: input * torch.tensor((xmax - xmin)).float().to(device) \
                                   + torch.tensor(xmin).float().to(device)
-    
-    
-#     norm_func_test = lambda input: (input - torch.tensor(xmin)) / torch.tensor((xmax - xmin))
-    
-#     testx = torch.tensor(dataset_train.x)
-#     print(testx.shape)
-#     print(torch.tensor(xmin).shape)
-#     assert False
     
     # Create the network architecture
     mlp = MLP(3, [64, 64], 2)
@@ -117,7 +74,7 @@ def main(config):
         train_loss_list.append(train_loss)
         val_loss_list.append(val_loss)
         progress_bar.set_description(progress(train_loss, val_loss))
-#         if epoch == 2:
+#         if epoch == 20:
 #             assert False
         
     model.save_network(config["DATA"]["PATH"]+'model_')

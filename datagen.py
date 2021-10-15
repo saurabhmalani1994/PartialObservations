@@ -83,7 +83,7 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
     x and t are numpy arrays of shape (Tx,). 
     x is array of observations of the variable, and t the corresponding times for each of the observations. 
     
-    Optionally outputs high temporal resolution t (shape n x dx x T=1000) and x (shape n x dx x T=1000) numpy arrays for plotting of ground truth trajectories.
+    Optionally outputs high temporal resolution t (shape n x T=1000 x dx) and x (shape n x T=1000) numpy arrays for plotting of ground truth trajectories.
     """
     Da_rng = np.random.default_rng(seed = 2341)
     dt_rng = np.random.default_rng(seed = 3412)
@@ -132,8 +132,9 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
     output = np.zeros((n_train,2), dtype=object)
     Da_output = np.zeros((n_train,1), dtype=object)
     if detail:
-        output_detail = np.zeros((n_train,2,1000), dtype=object)
-        output_detail_t = np.zeros((n_train,1000), dtype=object)
+        output_detail = np.zeros((n_train,1000,2))
+        output_detail_t = np.zeros((n_train,1000))
+        output_detail_Da = np.zeros((n_train,1000))
     
     for i in tqdm(range(n_train), leave=True, position=0):
         sol = integrate_cstr(tmin=0, tmax=max(solver_times_arr[i]), Da=Da[i], B=B, beta=beta, teval=solver_times_arr[i])
@@ -146,11 +147,12 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
         if detail:
             sol_detail = integrate_cstr(tmin=skip_time, tmax=max(solver_times_arr[i]), Da=Da[i], B=B, beta=beta, teval=np.linspace(skip_time,max(solver_times_arr[i]),1000), y0 = sol.y[:,0])
 
-            output_detail[i,0,:] = sol_detail.y[0,:]
-            output_detail[i,1,:] = sol_detail.y[1,:]
+            output_detail[i,:,0] = sol_detail.y[0,:]
+            output_detail[i,:,1] = sol_detail.y[1,:]
             output_detail_t[i,:] = sol_detail.t - skip_time
+            output_detail_Da[i,:] = np.array([Da[i]])
         
     if detail:
-        return output, Da_output, output_detail_t, output_detail
+        return output, Da_output, output_detail_t, output_detail, output_detail_Da
     else:
         return output, Da_output

@@ -40,12 +40,12 @@ def make_Bifurc():
     Da_arr_pred, x1min_pred, x2min_pred, x1max_pred, x2max_pred = make_Bifurc_prediction()
     
     
-    print('My bifurc shapes')
-    print(stable_ss_pred.shape)
-    print(stable_Da_pred.shape)
-    print(stable_ss_pred)
-    print(stable_Da_pred)
-    print('===================')
+#     print('My bifurc shapes')
+#     print(stable_ss_pred.shape)
+#     print(stable_Da_pred.shape)
+#     print(stable_ss_pred)
+#     print(stable_Da_pred)
+#     print('===================')
     
     fig = plt.figure(figsize=(15,15))
     ax1 = fig.add_subplot(111)
@@ -265,15 +265,12 @@ def make_Bifurc_prediction(verbose=False):
         
         pars = get_pars(Da)
         
-        torch_function = lambda f: network.network(f[0].unsqueeze(0).unsqueeze(0),
-                                                   f[1].unsqueeze(0).unsqueeze(0),
-                                                   torch.tensor([Da]).unsqueeze(0))
-        numpy_function = lambda f: network.network(torch.tensor(f[0]).unsqueeze(0).unsqueeze(0),
-                                                   torch.tensor(f[1]).unsqueeze(0).unsqueeze(0), 
-                                                   torch.tensor([Da]).unsqueeze(0)).detach().cpu().squeeze().numpy()
-        numpy_function_integ = lambda t, f: network.network(torch.tensor(f[0]).unsqueeze(0).unsqueeze(0),
-                                                   torch.tensor(f[1]).unsqueeze(0).unsqueeze(0), 
-                                                   torch.tensor([Da]).unsqueeze(0)).detach().cpu().squeeze().numpy()
+        torch_function = lambda f: network.output(f.unsqueeze(0).to(network.device),
+                                                   torch.tensor([Da]).unsqueeze(0).to(network.device))
+        numpy_function = lambda f: network.output(torch.tensor(f).unsqueeze(0).to(network.device),
+                                                   torch.tensor([Da]).unsqueeze(0).to(network.device)).detach().cpu().squeeze().numpy()
+        numpy_function_integ = lambda t, f: network.output(torch.tensor(f).unsqueeze(0).to(network.device),
+                                                   torch.tensor([Da]).unsqueeze(0).to(network.device)).detach().cpu().squeeze().numpy()
         
         root = fsolve(numpy_function, root)
         J = torch.autograd.functional.jacobian(torch_function, torch.from_numpy(root), strict=True)
@@ -440,49 +437,49 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     for i in range(len(Da_list)):
         Da = Da_list[i]
         
-        dataset_test = CSTRDataset(config["DATA"]["N_TEST"], config["DATA"]["TMAX"]*5,
-                               config["DATA"]["L_TRAJECTORIES"]*5, 
-                               Da=Da,
-                               B=config["PAR"]["B"],
-                            maxdt=config["DATA"]["MAX_DELTA_T"],
-                                x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*5,
-                                x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*5,
-                                skip_time=config["DATA"]["SKIP_TIME"],
-                               beta=config["PAR"]["beta"],
-                               reg_time=config["DATA"]["REG_TIME"],
-                                  inference=True)
+        data_test = datagen.generate_data(n_train=config["DATA"]["N_TEST"],
+                                              tmax=config["DATA"]["TMAX"]*6,                
+                                              x1_sample_num=config["DATA"]["X1_SAMPLE_NUM"]*6,
+                                              x2_sample_num=config["DATA"]["X2_SAMPLE_NUM"]*6, 
+                                        init_available=True,
+                                        Da_random=False,
+                                        Da_set=Da,
+                                         detail=True)
+#         dataset_test = preprocess.Dataset(data_test[3],data_test[1])
 
-        if network.box == 'Grey' or network.box == 'Gray':
-            def phi_network(x1_input,x2_input,Da):
-                x1_input_norm = (x1_input - network.x1min) / (network.x1max - network.x1min)
-                x2_input_norm = (x2_input - network.x2min) / (network.x2max - network.x2min)
-                Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
+#         if network.box == 'Grey' or network.box == 'Gray':
+#             def phi_network(x1_input,x2_input,Da):
+#                 x1_input_norm = (x1_input - network.x1min) / (network.x1max - network.x1min)
+#                 x2_input_norm = (x2_input - network.x2min) / (network.x2max - network.x2min)
+#                 Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
 
-                ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
+#                 ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
 
-                for layer in network.layers:
-                    ANN_input = layer(ANN_input)
-                    ANN_input = network.activation(ANN_input)
-                ANN_output = network.output_layer(ANN_input)
+#                 for layer in network.layers:
+#                     ANN_input = layer(ANN_input)
+#                     ANN_input = network.activation(ANN_input)
+#                 ANN_output = network.output_layer(ANN_input)
                 
-                return ANN_output
+#                 return ANN_output
 
-        x1_in_RHS = torch.from_numpy(dataset_test.x1_data[0][:-1]).unsqueeze(0)#
-        x2_in_RHS = torch.from_numpy(dataset_test.x2_data[0][:-1]).unsqueeze(0)#
+        x1_in_RHS = torch.from_numpy(data_test[3][...,0])
+        x2_in_RHS = torch.from_numpy(data_test[3][...,1])
+        x_in_RHS = torch.from_numpy(data_test[3]).to(network.device)
+        p_in_RHS = torch.from_numpy(data_test[4]).unsqueeze(-1).to(network.device)
 
-        myB, mybeta, myD = 11, 3, torch.tensor(dataset_test.Da).unsqueeze(0)#
+        myB, mybeta, myD = 11, 3, torch.from_numpy(data_test[4])#
         real_RHS_x1.append((-x1_in_RHS + myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
         real_RHS_x2.append((-x2_in_RHS + myB * myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS) - mybeta * x2_in_RHS).detach().cpu().squeeze().numpy())
         
-        ANN_output = network.network(x1_in_RHS, x2_in_RHS, myD)
+        ANN_output = network.output(x_in_RHS, p_in_RHS)
         pred_RHS_x1.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
         pred_RHS_x2.append(ANN_output[...,1].detach().cpu().squeeze().numpy())
         
         
-        if network.box == 'Grey' or network.box == 'Gray':
-            real_phi.append((myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
-            ANN_output = phi_network(x1_in_RHS, x2_in_RHS, myD) * torch.pow(2.,network.ANNPower1*7)
-            pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
+#         if network.box == 'Grey' or network.box == 'Gray':
+#             real_phi.append((myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
+#             ANN_output = phi_network(x1_in_RHS, x2_in_RHS, myD) * torch.pow(2.,network.ANNPower1*7)
+#             pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
             
             
     real_RHS_x1 = np.concatenate((np.array(real_RHS_x1,dtype=object))).flatten()
@@ -514,35 +511,35 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     plt.show()
     plt.close()
     
-    if network.box == 'Grey' or network.box == 'Gray':
-        real_phi = np.concatenate((np.array(real_phi,dtype=object))).flatten()
-        pred_phi = np.concatenate((np.array(pred_phi,dtype=object))).flatten()
+#     if network.box == 'Grey' or network.box == 'Gray':
+#         real_phi = np.concatenate((np.array(real_phi,dtype=object))).flatten()
+#         pred_phi = np.concatenate((np.array(pred_phi,dtype=object))).flatten()
         
-        fig = plt.figure(figsize=(10,10))
-        ax = fig.add_subplot(111)
-        ax.plot(real_phi, pred_phi,'b.')
-        ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
-        ax.set_xlabel('True phi: ',fontsize=40)
-        ax.set_ylabel('Predicted phi: ',fontsize=40)
-        plt.yticks(fontsize=25)
-        plt.xticks(fontsize=25)
-        fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+#         fig = plt.figure(figsize=(10,10))
+#         ax = fig.add_subplot(111)
+#         ax.plot(real_phi, pred_phi,'b.')
+#         ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
+#         ax.set_xlabel('True phi: ',fontsize=40)
+#         ax.set_ylabel('Predicted phi: ',fontsize=40)
+#         plt.yticks(fontsize=25)
+#         plt.xticks(fontsize=25)
+#         fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
         
-        if network.parameter_knowledge == 'Trainable':
-            labels = [r'$B$',r'$\beta$']
-            x = np.arange(len(labels))
-            width = 0.35
+#         if network.parameter_knowledge == 'Trainable':
+#             labels = [r'$B$',r'$\beta$']
+#             x = np.arange(len(labels))
+#             width = 0.35
             
-            fig = plt.figure(figsize=(20,10))
-            ax = fig.add_subplot(111)
-            ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
-            ax.bar(x+width/2,[network.B.item()*100, network.beta.item()*100],width=width,label='Model Prediction')
-            ax.set_xticks(x)
-            ax.set_xticklabels(labels,fontsize=30)
-            plt.yticks(fontsize=30)
-            plt.title('Model Prediction of Experimental Parameters',fontsize=25)
-            plt.legend(fontsize=30)
-            fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
+#             fig = plt.figure(figsize=(20,10))
+#             ax = fig.add_subplot(111)
+#             ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
+#             ax.bar(x+width/2,[network.B.item()*100, network.beta.item()*100],width=width,label='Model Prediction')
+#             ax.set_xticks(x)
+#             ax.set_xticklabels(labels,fontsize=30)
+#             plt.yticks(fontsize=30)
+#             plt.title('Model Prediction of Experimental Parameters',fontsize=25)
+#             plt.legend(fontsize=30)
+#             fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
     
     
 def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]):
@@ -561,13 +558,13 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
                                         Da_set=Da,
                                          detail=True)
         dataset_test = preprocess.Dataset(*data_test[:2])
-        output_detail_t, output_detail = data_test[2:]
+        output_detail_t, output_detail, output_detail_Da = data_test[2:]
         
 #         print('shapes')
 #         print(output_detail_t.shape)
 #         print(output_detail.shape)
 
-        network.initial_x = network.norm_func(torch.tensor(dataset_test.x).to(network.device))
+        network.initial_x = torch.nn.Parameter(network.norm_func(torch.tensor(dataset_test.x).float().to(network.device)))
         
         def my_ode(t, y, p):
 #             print()
@@ -595,7 +592,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
 #         fig = plt.figure(figsize=(15,5))
         ax = fig.add_subplot(111)
         ax.plot(dataset_test.full_times_arr[0][~np.isnan(dataset_test.x[0,:,0])],dataset_test.x[0,:,0][~np.isnan(dataset_test.x[0,:,0])],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-        ax.plot(output_detail_t[0,:], output_detail[0,0,:],'k',label='true trajectory',linewidth=3)
+        ax.plot(output_detail_t[0,:], output_detail[0,:,0],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x1_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_1$',fontsize=40)
@@ -610,7 +607,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
         fig = plt.figure(figsize=(20,10))
         ax = fig.add_subplot(111)
         ax.plot(dataset_test.full_times_arr[0][~np.isnan(dataset_test.x[0,:,1])],dataset_test.x[0,:,1][~np.isnan(dataset_test.x[0,:,1])],'x',label='true (training points)',markersize=20,markeredgecolor='#1f77b4',markeredgewidth=2)
-        ax.plot(output_detail_t[0,:], output_detail[0,1,:],'k',label='true trajectory',linewidth=3)
+        ax.plot(output_detail_t[0,:], output_detail[0,:,1],'k',label='true trajectory',linewidth=3)
         ax.plot(solver_time,x2_out,'x-',label='predicted',linewidth=3)
         ax.set_xlabel(r'$t$',fontsize=40)
         ax.set_ylabel(r'$X_2$',fontsize=40)

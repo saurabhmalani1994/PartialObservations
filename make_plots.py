@@ -51,9 +51,9 @@ def main(config, Da=config["PAR"]["Da"]):
 #     Da_list = [0.33]
 #     Da_list = [0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]
 
-    helper.make_transients(Da_list)
+#     helper.make_transients(Da_list)
 #     helper.make_RHS(Da_list)
-#     helper.make_Bifurc()
+    helper.make_Bifurc()
 
 if __name__ == "__main__":
     main(config)

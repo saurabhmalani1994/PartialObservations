@@ -70,8 +70,8 @@ class Network(nn.Module):
         self.net = network.to(self.device)
         self.tf_prop = torch.tensor(tf_prop).float()
         
-        self.initial_x = nn.Parameter(torch.zeros(train_size, xdim) + 0.5, requires_grad = not init_available).to(self.device)
-        self.additional_pars = nn.Parameter(torch.zeros(add_par_num) + 0.5, requires_grad = True).to(self.device)
+        self.initial_x = nn.Parameter(torch.zeros(train_size, xdim).to(self.device) + 0.5, requires_grad = not init_available)
+        self.additional_pars = nn.Parameter(torch.zeros(add_par_num).to(self.device) + 0.5, requires_grad = True)
         
         self.norm_func = lambda input: norm_func(input, self.device)
         self.inv_norm_func = lambda input: inv_norm_func(input, self.device)
@@ -110,6 +110,8 @@ class Network(nn.Module):
                                      x_arr[0])) # False clause
         else:
             x_out.append(x_arr[0])
+#         print(x_out)
+#         assert False
         
         switch = int(len(x_arr) * self.tf_prop)
         for i, (x_input_temp, p_input, dt_input) in enumerate(zip(x_arr, par_arr, dt_arr)):
@@ -146,7 +148,7 @@ class Network(nn.Module):
         
         ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
         out = self.net(ANN_input)
-        out = torch.stack((out[...,0],
+        out = torch.stack((out[...,0] / 10,
                            out[...,1],
                          ), dim=-1)
         
@@ -174,9 +176,7 @@ class Network(nn.Module):
         ANN_input = x
         k1 = self.output(x, par)
 #         k1 = torch.clip(k1, min = 0, max = 1e4)
-#         print('RK4')
-#         print(x.shape)
-#         print(k1.shape)
+
     
         ANN_input = x + k1 * dt / 2
         k2 = self.output(ANN_input, par)
@@ -257,11 +257,14 @@ class Model_Train():
                                             and (kv[0] not in other_par_list), self.net.named_parameters()))))
         
         print('MY LEARNING RATE IS ' + str(self.lr))
+#         print(init_params)
+#         print(other_params)
+#         assert False
         
         self.optimizer = torch.optim.AdamW([
         {'params': ANN_params},
-        {'params': init_params, 'lr': self.lr/10},
-        {'params': other_params, 'lr': self.lr/10}],
+        {'params': init_params, 'lr': self.lr/1},
+        {'params': other_params, 'lr': self.lr/1}],
             lr=self.lr, amsgrad=True, weight_decay=0.01)
 
 #         self.criterion = my_Loss(reduction='mean')
@@ -289,17 +292,17 @@ class Model_Train():
         
         # Switch to OneCycleLR LR rate scheduler
         if epoch == self.epoch_shift:
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-3, 1e-3],
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-2, 1e-2],
                                                   total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
-            self.net.tf_prop = torch.tensor(0.).float()
+#             self.net.tf_prop = torch.tensor(0.).float()
             print('Shifting to Autoregressive at epoch: ' + str(epoch))
  
         for (x, p, t, index) in self.dataloader_train:
             self.optimizer.zero_grad()
             x_in = x[0][:,:-1,:]
             
-            xout_hat = self.net(x_in.to(self.device), p[0].to(self.device), t[0].to(self.device), index[0])
+            xout_hat = self.net(x_in.to(self.device), p[0].to(self.device), t[0].to(self.device), index)
             
             # Normalize vectors before loss calculation
             x_out_norm = self.norm_func(x[0].to(self.device))
@@ -308,7 +311,7 @@ class Model_Train():
             # Calculate loss
             loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)], x_out_hat_norm[~torch.isnan(x_out_norm)])
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.5)
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.1)
             
             self.optimizer.step()
             
