@@ -46,9 +46,88 @@ def main(config):
     inv_norm_func = lambda input, device: input * torch.tensor((xmax - xmin)).float().to(device) \
                                   + torch.tensor(xmin).float().to(device)
     
-    # Create the network architecture
-    mlp = MLP(3, [64, 64], 2)
-    network = Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+    
+    if config["MODEL"]["BOX"] == 'Black':
+        # Create the network architecture
+        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 2)
+        
+        class my_Network(Network):
+            def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                         inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                         tf_prop=1., integrator='RK4', add_par_num=0):
+                super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                         inv_norm_func, init_available, device, 
+                         tf_prop, integrator, add_par_num)
+
+            def output(self, x, par):
+
+                ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                out = self.net(ANN_input)
+                out = torch.stack((out[...,0] / 10,
+                                   out[...,1],
+                                 ), dim=-1)
+                return out
+    
+    elif config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
+        
+        # Create the network architecture
+        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 1)
+        
+        if config["MODEL"]["Parameters"] == 'Trainable':
+            class my_Network(Network):
+                def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                             inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                             tf_prop=1., integrator='RK4', add_par_num=2):
+                    super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                             inv_norm_func, init_available, device, 
+                             tf_prop, integrator, add_par_num)
+
+                def output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+
+                    x1 = x[...,0]
+                    x2 = x[...,1]
+                    B = self.additional_pars[0] * 10
+                    beta = self.additional_pars[1] * 10
+
+                    dx1dt = -x1 + g
+                    dx2dt = -x2 + B * g - beta * x2
+
+                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    return out
+        elif config["MODEL"]["Parameters"] == 'Fixed':
+            class my_Network(Network):
+                def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                             inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                             tf_prop=1., integrator='RK4', add_par_num=0):
+                    super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                             inv_norm_func, init_available, device, 
+                             tf_prop, integrator, add_par_num)
+                    self.fixed_parameters = torch.tensor([11, 3]).to(self.device)
+                def output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+
+                    x1 = x[...,0]
+                    x2 = x[...,1]
+                    B = self.fixed_parameters[0]
+                    beta = self.fixed_parameters[1]
+
+                    dx1dt = -x1 + g
+                    dx2dt = -x2 + B * g - beta * x2
+
+                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    return out
+        else:
+            raise ValueError("Tell me whether to train the parameters!")
+    else:
+        raise ValueError("Tell me what box to use!")
+            
+    
+    network = my_Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
                       init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
     
     print(network)

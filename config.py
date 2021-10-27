@@ -28,3 +28,5 @@ config["TRAINING"]["EPOCHS"] = 2000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [64, 64]
+config["MODEL"]["BOX"] = 'Grey'
+config["MODEL"]["Parameters"] = 'Trainable'

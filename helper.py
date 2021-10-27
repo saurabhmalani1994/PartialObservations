@@ -381,12 +381,87 @@ def load_network():
                                   + torch.tensor(xmin).float().to(device)
 
     # Create the network architecture
-    mlp = MLP(3, [64, 64], 2)
-    network = Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+    if config["MODEL"]["BOX"] == 'Black':
+        # Create the network architecture
+        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 2)
+        
+        class my_Network(Network):
+            def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                         inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                         tf_prop=1., integrator='RK4', add_par_num=0):
+                super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                         inv_norm_func, init_available, device, 
+                         tf_prop, integrator, add_par_num)
+
+            def output(self, x, par):
+
+                ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                out = self.net(ANN_input)
+                out = torch.stack((out[...,0] / 10,
+                                   out[...,1],
+                                 ), dim=-1)
+                return out
+    
+    elif config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
+        
+        # Create the network architecture
+        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 1)
+        
+        if config["MODEL"]["Parameters"] == 'Trainable':
+            class my_Network(Network):
+                def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                             inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                             tf_prop=1., integrator='RK4', add_par_num=2):
+                    super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                             inv_norm_func, init_available, device, 
+                             tf_prop, integrator, add_par_num)
+
+                def output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+
+                    x1 = x[...,0]
+                    x2 = x[...,1]
+                    B = self.additional_pars[0] * 10
+                    beta = self.additional_pars[1] * 10
+
+                    dx1dt = -x1 + g
+                    dx2dt = -x2 + B * g - beta * x2
+
+                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    return out
+        elif config["MODEL"]["Parameters"] == 'Fixed':
+            class my_Network(Network):
+                def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
+                             inv_norm_func=lambda input, device: input, init_available=True, device=None, 
+                             tf_prop=1., integrator='RK4', add_par_num=0):
+                    super(my_Network, self).__init__(network, train_size, xdim, norm_func,
+                             inv_norm_func, init_available, device, 
+                             tf_prop, integrator, add_par_num)
+                    self.fixed_parameters = torch.tensor([11, 3]).to(self.device)
+                def output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+
+                    x1 = x[...,0]
+                    x2 = x[...,1]
+                    B = self.fixed_parameters[0]
+                    beta = self.fixed_parameters[1]
+
+                    dx1dt = -x1 + g
+                    dx2dt = -x2 + B * g - beta * x2
+
+                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    return out
+        else:
+            raise ValueError("Tell me whether to train the parameters!")
+    else:
+        raise ValueError("Tell me what box to use!")
+    network = my_Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
                       init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
     device = 'cpu'
-    
-
 
     filename = config["DATA"]["PATH"]+'model_' + '.net'
 
@@ -447,20 +522,9 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
                                          detail=True)
 #         dataset_test = preprocess.Dataset(data_test[3],data_test[1])
 
-#         if network.box == 'Grey' or network.box == 'Gray':
-#             def phi_network(x1_input,x2_input,Da):
-#                 x1_input_norm = (x1_input - network.x1min) / (network.x1max - network.x1min)
-#                 x2_input_norm = (x2_input - network.x2min) / (network.x2max - network.x2min)
-#                 Da_input = (Da.repeat(1,x1_input.size()[1]) - 0.2) / (0.5 - 0.2)
-
-#                 ANN_input = torch.stack((x1_input_norm,x2_input_norm,Da_input),dim=-1)
-
-#                 for layer in network.layers:
-#                     ANN_input = layer(ANN_input)
-#                     ANN_input = network.activation(ANN_input)
-#                 ANN_output = network.output_layer(ANN_input)
-                
-#                 return ANN_output
+        if config["MODEL"]["BOX"]== 'Grey' or config["MODEL"]["BOX"] == 'Gray':
+            def phi_network(x_in_RHS, p_in_RHS):
+                return network.raw_output(x_in_RHS, p_in_RHS)
 
         x1_in_RHS = torch.from_numpy(data_test[3][...,0])
         x2_in_RHS = torch.from_numpy(data_test[3][...,1])
@@ -476,10 +540,10 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
         pred_RHS_x2.append(ANN_output[...,1].detach().cpu().squeeze().numpy())
         
         
-#         if network.box == 'Grey' or network.box == 'Gray':
-#             real_phi.append((myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
-#             ANN_output = phi_network(x1_in_RHS, x2_in_RHS, myD) * torch.pow(2.,network.ANNPower1*7)
-#             pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
+        if config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
+            real_phi.append((myD * (1-x1_in_RHS) * torch.exp(x2_in_RHS)).detach().cpu().squeeze().numpy())
+            ANN_output = phi_network(x_in_RHS, p_in_RHS)
+            pred_phi.append(ANN_output[...,0].detach().cpu().squeeze().numpy())
             
             
     real_RHS_x1 = np.concatenate((np.array(real_RHS_x1,dtype=object))).flatten()
@@ -511,35 +575,37 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     plt.show()
     plt.close()
     
-#     if network.box == 'Grey' or network.box == 'Gray':
-#         real_phi = np.concatenate((np.array(real_phi,dtype=object))).flatten()
-#         pred_phi = np.concatenate((np.array(pred_phi,dtype=object))).flatten()
+    if config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
+        real_phi = np.concatenate((np.array(real_phi,dtype=object))).flatten()
+        pred_phi = np.concatenate((np.array(pred_phi,dtype=object))).flatten()
         
-#         fig = plt.figure(figsize=(10,10))
-#         ax = fig.add_subplot(111)
-#         ax.plot(real_phi, pred_phi,'b.')
-#         ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
-#         ax.set_xlabel('True phi: ',fontsize=40)
-#         ax.set_ylabel('Predicted phi: ',fontsize=40)
-#         plt.yticks(fontsize=25)
-#         plt.xticks(fontsize=25)
-#         fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+        fig = plt.figure(figsize=(10,10))
+        ax = fig.add_subplot(111)
+        ax.plot(real_phi, pred_phi,'b.')
+        ax.plot([np.min(real_phi),np.max(real_phi)],[np.min(real_phi),np.max(real_phi)],'k-')
+        ax.set_xlabel('True phi: ',fontsize=40)
+        ax.set_ylabel('Predicted phi: ',fontsize=40)
+        plt.yticks(fontsize=25)
+        plt.xticks(fontsize=25)
+        fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
         
-#         if network.parameter_knowledge == 'Trainable':
-#             labels = [r'$B$',r'$\beta$']
-#             x = np.arange(len(labels))
-#             width = 0.35
+        if config["MODEL"]["Parameters"] == 'Trainable':
+            labels = [r'$B$',r'$\beta$']
+            x = np.arange(len(labels))
+            width = 0.35
             
-#             fig = plt.figure(figsize=(20,10))
-#             ax = fig.add_subplot(111)
-#             ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
-#             ax.bar(x+width/2,[network.B.item()*100, network.beta.item()*100],width=width,label='Model Prediction')
-#             ax.set_xticks(x)
-#             ax.set_xticklabels(labels,fontsize=30)
-#             plt.yticks(fontsize=30)
-#             plt.title('Model Prediction of Experimental Parameters',fontsize=25)
-#             plt.legend(fontsize=30)
-#             fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
+            fig = plt.figure(figsize=(20,10))
+            ax = fig.add_subplot(111)
+            ax.bar(x-width/2,[11, 3],width=width,label='Ground Truth')
+            ax.bar(x+width/2,[network.additional_pars[0] * 10, 
+                              network.additional_pars[1] * 10],
+                   width=width,label='Model Prediction')
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels,fontsize=30)
+            plt.yticks(fontsize=30)
+            plt.title('Model Prediction of Experimental Parameters',fontsize=25)
+            plt.legend(fontsize=30)
+            fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
     
     
 def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]):

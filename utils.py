@@ -147,11 +147,12 @@ class Network(nn.Module):
     def output(self, x, par):
         
         ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-        out = self.net(ANN_input)
-        out = torch.stack((out[...,0] / 10,
-                           out[...,1],
-                         ), dim=-1)
-        
+        out = self.net(ANN_input)        
+        return out
+    
+    def raw_output(self, x, par):
+        ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+        out = self.net(ANN_input)        
         return out
 
     def Euler(self, x, par, dt):
@@ -296,7 +297,7 @@ class Model_Train():
                                                   total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
 #             self.net.tf_prop = torch.tensor(0.).float()
-            print('Shifting to Autoregressive at epoch: ' + str(epoch))
+#             print('Shifting to Autoregressive at epoch: ' + str(epoch))
  
         for (x, p, t, index) in self.dataloader_train:
             self.optimizer.zero_grad()
