@@ -280,7 +280,7 @@ class Model_Train():
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
 
-        self.epoch_shift = 200
+        self.epoch_shift = 0
 
         self.total_steps_OneCycle = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) \
                                * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
@@ -293,7 +293,7 @@ class Model_Train():
         
         # Switch to OneCycleLR LR rate scheduler
         if epoch == self.epoch_shift:
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[1e-2,1e-2, 1e-2],
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr, self.lr],
                                                   total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
 #             self.net.tf_prop = torch.tensor(0.).float()
