@@ -10,11 +10,13 @@ from torch.utils.data import DataLoader
 
 from tqdm.auto import tqdm
 
-
-from utils import Network, MLP, Model_Train, progress
-import preprocess
-import datagen
+from main import preprocess
+from main.utils import Network, MLP, Model_Train, progress
+# import preprocess
+from URPModel import datagen, make_plots, helper
 from config import config
+
+# from config import config
 # from utils import CSTRDataset, LSTMNetwork, LSTMModel, progress, config
 
 
