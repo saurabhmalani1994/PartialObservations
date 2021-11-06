@@ -15,4 +15,4 @@ module purge
 module load anaconda3/2020.11
 conda activate torch-env
 
-python make_plots.py
+python URPModel/make_plots.py
