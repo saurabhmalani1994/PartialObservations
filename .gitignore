@@ -1,1 +1,4 @@
-Figures/
+.ipynb_checkpoints/
+.vscode/
+minmax/.ipynb_checkpoints/
+__pycache__/

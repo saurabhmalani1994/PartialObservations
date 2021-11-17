@@ -20,10 +20,10 @@ from torch import Tensor
 import torch.jit as jit
 
 from main.utils import Network, MLP
-from . import datagen
-from .datagen import f_cstr, get_pars
+import datagen
+from datagen import f_cstr, get_pars
 from config import config
-import main.preprocess
+from main import preprocess
 
 # from utils import f_cstr, get_pars, integrate_cstr, Network, config, CSTRDataset
 
@@ -69,7 +69,7 @@ def make_Bifurc():
     ax1.tick_params(axis='both', which='major', labelsize=20)
     ax1.set_xlabel(r'Da', fontsize=24)
     ax1.set_ylabel(r'$x_1$', fontsize=24)
-    fig.savefig('Figures/Bifurcation Plot x1.png',format='png')
+    fig.savefig('../Figures/Bifurcation Plot x1.png',format='png')
 
     fig = plt.figure(figsize=(15,15))
     ax1 = fig.add_subplot(111)
@@ -90,7 +90,7 @@ def make_Bifurc():
     ax1.tick_params(axis='both', which='major', labelsize=20)
     ax1.set_xlabel(r'Da', fontsize=24)
     ax1.set_ylabel(r'$x_2$', fontsize=24)
-    fig.savefig('Figures/Bifurcation Plot x2.png',format='png')
+    fig.savefig('../Figures/Bifurcation Plot x2.png',format='png')
 
 def make_Bifurc_true(verbose=False):
     Da_arr = np.linspace(0.2,0.5,100)
@@ -199,7 +199,7 @@ def make_Bifurc_true(verbose=False):
         ax1.set_xlabel(r'Da', fontsize=30)
         ax1.set_ylabel(r'$x_1$', fontsize=30)
         ax1.tick_params(axis='both', which='major', labelsize=20)
-        fig.savefig('data/Bifurcation Plot True x1.png',format='png')
+        fig.savefig('../data/Bifurcation Plot True x1.png',format='png')
 
         fig = plt.figure(figsize=(15,15))
         ax1 = fig.add_subplot(111)
@@ -211,7 +211,7 @@ def make_Bifurc_true(verbose=False):
         ax1.set_xlabel(r'Da', fontsize=30)
         ax1.set_ylabel(r'$x_2$', fontsize=30)
         ax1.tick_params(axis='both', which='major', labelsize=20)
-        fig.savefig('data/Bifurcation Plot True x2.png',format='png')
+        fig.savefig('../data/Bifurcation Plot True x2.png',format='png')
     return unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max
     
 def ODE_Bifurc(y, func, Da, x10):
@@ -371,7 +371,7 @@ def load_network():
     
 #     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-    f = np.load("minmax/minmax.npz")
+    f = np.load("../minmax/minmax.npz")
     
     xmax = f['arr_0']
     xmin = f['arr_1']
@@ -562,7 +562,7 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     ax.set_ylabel('Predicted RHS: ' + r'$x_1$',fontsize=40)
     plt.yticks(fontsize=25)
     plt.xticks(fontsize=25)
-    fig.savefig('Figures/RHS for x1' + '.png',format='png', bbox_inches='tight')
+    fig.savefig('../Figures/RHS for x1' + '.png',format='png', bbox_inches='tight')
     plt.show()
     plt.close()
 
@@ -574,7 +574,7 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
     ax.set_ylabel('Predicted RHS: ' + r'$x_2$',fontsize=40)
     plt.yticks(fontsize=25)
     plt.xticks(fontsize=25)
-    fig.savefig('Figures/RHS for x2' + '.png',format='png', bbox_inches='tight')
+    fig.savefig('../Figures/RHS for x2' + '.png',format='png', bbox_inches='tight')
     plt.show()
     plt.close()
     
@@ -590,7 +590,7 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
         ax.set_ylabel('Predicted phi: ',fontsize=40)
         plt.yticks(fontsize=25)
         plt.xticks(fontsize=25)
-        fig.savefig('Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
+        fig.savefig('../Figures/Phi predictions' + '.png',format='png', bbox_inches='tight')
         
         if config["MODEL"]["Parameters"] == 'Trainable':
             labels = [r'$B$',r'$\beta$']
@@ -608,7 +608,7 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
             plt.yticks(fontsize=30)
             plt.title('Model Prediction of Experimental Parameters',fontsize=25)
             plt.legend(fontsize=30)
-            fig.savefig('Figures/Prediction of Experiment Parameters' + '.png',format='png')
+            fig.savefig('../Figures/Prediction of Experiment Parameters' + '.png',format='png')
     
     
 def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]):
@@ -669,7 +669,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.p[0,0,0]),fontsize=30)
-        fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
+        fig.savefig('../Figures/Prediction for x1 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
         plt.show()
         plt.close()
 
@@ -684,7 +684,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
         plt.xticks(fontsize=25)
         plt.legend(fontsize=20,loc='upper left')
         plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.p[0,0,0]),fontsize=30)
-        fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
+        fig.savefig('../Figures/Prediction for x2 for Da_' + str(dataset_test.p[0,0,0]) + 'index_' + str(index) + '_solveivp' + '.png',format='png')
         plt.show()
         plt.close()
         
@@ -706,7 +706,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
 #         plt.xticks(fontsize=25)
 #         plt.legend(fontsize=20,loc='upper left')
 #         plt.title(r'$X_1$' + ' graph for Da: ' + str(dataset_test.Da),fontsize=30)
-#         fig.savefig('Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
+#         fig.savefig('../Figures/Prediction for x1 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
 #         plt.show()
 #         plt.close()
 
@@ -722,7 +722,7 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
 #         plt.xticks(fontsize=25)
 #         plt.legend(fontsize=20,loc='upper left')
 #         plt.title(r'$X_2$' + ' graph for Da: ' + str(dataset_test.Da[0]),fontsize=30)
-#         fig.savefig('Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
+#         fig.savefig('../Figures/Prediction for x2 for Da_' + str(dataset_test.Da) + 'index_' + str(index) + '_network' + '.png',format='png')
 #         plt.show()
 #         plt.close()
         

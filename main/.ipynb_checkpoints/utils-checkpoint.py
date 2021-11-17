@@ -179,20 +179,15 @@ class Network(nn.Module):
         
         ANN_input = x
         k1 = self.output(x, par)
-#         k1 = torch.clip(k1, min = 0, max = 1e4)
-
     
         ANN_input = x + k1 * dt / 2
         k2 = self.output(ANN_input, par)
-#         k2 = torch.clip(k2, min = 0, max = 1e4)
         
         ANN_input = x + k2 * dt / 2
         k3 = self.output(ANN_input, par)
-#         k3 = torch.clip(k3, min = 0, max = 1e4)
         
         ANN_input = x + k3 * dt
         k4 = self.output(ANN_input, par)
-#         k4 = torch.clip(k4, min = 0, max = 1e4)
         
         x_out = x + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
         return x_out
@@ -283,7 +278,7 @@ class Model_Train():
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=50, factor=0.5, min_lr=0.000001)
 
-        self.epoch_shift = 0
+        self.epoch_shift = 5000
 
         self.total_steps_OneCycle = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) \
                                * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
@@ -296,8 +291,7 @@ class Model_Train():
         
         # Switch to OneCycleLR LR rate scheduler
         if epoch == self.epoch_shift:
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr, self.lr],
-                                                  total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr, self.lr], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
 #             self.net.tf_prop = torch.tensor(0.).float()
 #             print('Shifting to Autoregressive at epoch: ' + str(epoch))

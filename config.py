@@ -2,10 +2,10 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
 # config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 9 # Num of training traj
-config["DATA"]["N_VAL"] = 7
+config["DATA"]["N_TRAIN"] = 50 # Num of training traj
+config["DATA"]["N_VAL"] = 10
 config["DATA"]["N_TEST"] = 1
-config["DATA"]["PATH"] = 'data/'
+config["DATA"]["PATH"] = '../data/'
 config["DATA"]["SKIP_TIME"] = 1
 config["DATA"]["X1_SAMPLE_NUM"] = 13 # Num of pts per traj
 config["DATA"]["X2_SAMPLE_NUM"] = 13
@@ -24,7 +24,7 @@ config["PAR"]["beta"] = 3.
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 256
 config["TRAINING"]["LEARNING_RATE"] = 1e-2
-config["TRAINING"]["EPOCHS"] = 4000 # 1000 # 1259 # 2539 # 5260
+config["TRAINING"]["EPOCHS"] = 10000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [64, 64]

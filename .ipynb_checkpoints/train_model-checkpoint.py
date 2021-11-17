@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from main import preprocess
 from main.utils import Network, MLP, Model_Train, progress
 # import preprocess
-from URPModel import datagen, make_plots, helper
+from URPModel import datagen#, make_plots, helper
 from config import config
 
 # from config import config
@@ -158,7 +158,7 @@ def main(config):
 #         if epoch == 20:
 #             assert False
         
-    model.save_network(config["DATA"]["PATH"]+'model_')
+    model.save_network('data/'+'model_')
         
 
 
