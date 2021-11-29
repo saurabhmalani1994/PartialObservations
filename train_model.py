@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from main import preprocess
 from main.utils import Network, MLP, Model_Train, progress
 # import preprocess
-from URPModel import datagen#, make_plots, helper
+from BandFModel import datagen#, make_plots, helper
 from config import config
 
 # from config import config
@@ -21,12 +21,13 @@ from config import config
 
 
 def main(config):
-    data_train = datagen.generate_data(n_train=config["DATA"]["N_TRAIN"])
-    dataset_train = preprocess.Dataset(*data_train)
+    data_train = datagen.generate_data(n_train=config["DATA"]["N_TRAIN"], duplicate_reverse=config["DATA"]["DUP_REVERSE"])
+    dataset_train = preprocess.Dataset(*data_train, duplicate_reverse=config["DATA"]["DUP_REVERSE"])
     data_val = datagen.generate_data(n_train=config["DATA"]["N_VAL"],
                                     init_available=True,
-                                    Da_random=True)
-    dataset_val = preprocess.Dataset(*data_val)
+                                    theta_random=True,
+                                    duplicate_reverse=config["DATA"]["DUP_REVERSE"])
+    dataset_val = preprocess.Dataset(*data_val, duplicate_reverse=config["DATA"]["DUP_REVERSE"])
     
     # Create PyTorch dataloaders for train and validation data
     dataloader_train = DataLoader(dataset_train, batch_size=config["TRAINING"]["BATCH_SIZE"],
@@ -35,23 +36,27 @@ def main(config):
                                 shuffle=True, num_workers=1, pin_memory=True)
     
     
+    # print('FalsityFalse')
+    # print(dataset_train.x.shape)
+    # assert False
+
     xmax = np.nanmax(np.nanmax(np.array(dataset_train.x), axis=1), axis=0)
     xmin = np.nanmin(np.nanmin(np.array(dataset_train.x), axis=1), axis=0)
-    xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
+    # xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
     print('maxmins')
     print(xmax)
     print(xmin)
     
     norm_func = lambda input, device: (input - torch.tensor(xmin).float().to(device)) / \
-                            torch.tensor((xmax - xmin)).float().to(device)
-    inv_norm_func = lambda input, device: input * torch.tensor((xmax - xmin)).float().to(device) \
+                            ((torch.tensor((xmax - xmin)).float().to(device)) + 1e-10)
+    inv_norm_func = lambda input, device: input * ((torch.tensor((xmax - xmin)).float().to(device)) + 1e-10) \
                                   + torch.tensor(xmin).float().to(device)
     
     
     if config["MODEL"]["BOX"] == 'Black':
         # Create the network architecture
-        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 2)
+        mlp = MLP(5, config["MODEL"]["NUM_HIDDEN"], 6)
         
         class my_Network(Network):
             def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
@@ -61,19 +66,26 @@ def main(config):
                          inv_norm_func, init_available, device, 
                          tf_prop, integrator, add_par_num)
 
+                self.additional_pars = torch.nn.Parameter((torch.zeros(6)-1).to(self.device), requires_grad = True) 
+
             def output(self, x, par):
 
-                ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-                out = self.net(ANN_input)
-                out = torch.stack((out[...,0] / 10,
-                                   out[...,1],
-                                 ), dim=-1)
+                # ANN_input = torch.cat((self.norm_func(x), par/20), dim=-1)
+                ANN_input = self.norm_func(x)[...,[0,2,3,4,5]]
+                out = self.net(ANN_input) #* (2 ** (self.additional_pars))
+                # print(out)
+                out = self.inv_norm_func(out) * (2 ** (7 * self.additional_pars))
+                zeros = torch.zeros((out[...,[0]].shape)).to(self.device)
+                out = torch.cat((out[...,[0]],zeros,out[...,2:]), -1)
+                # print(out)
+                # assert False
+                # out = out * torch.tensor([1000, 5e-168, 2.7, 1000, 17000, 6.2]).to(self.device)
                 return out
     
     elif config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
         
         # Create the network architecture
-        mlp = MLP(3, config["MODEL"]["NUM_HIDDEN"], 1)
+        mlp = MLP(5, config["MODEL"]["NUM_HIDDEN"], 2)
         
         if config["MODEL"]["Parameters"] == 'Trainable':
             class my_Network(Network):
@@ -84,44 +96,92 @@ def main(config):
                              inv_norm_func, init_available, device, 
                              tf_prop, integrator, add_par_num)
 
-                def output(self, x, par):
+                    self.additional_pars = torch.nn.Parameter((torch.cat(((torch.zeros(3)-2), (torch.zeros(4) + 1)))).to(self.device), 
+                                                requires_grad = True)
 
-                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-                    g = self.net(ANN_input)[...,0]
+                def output(self, x_input, par):
 
-                    x1 = x[...,0]
-                    x2 = x[...,1]
-                    B = self.additional_pars[0] * 10
-                    beta = self.additional_pars[1] * 10
+                    ANN_input = self.norm_func(x_input)[...,[0,2,3,4,5]]
+                    ANN_output = self.net(ANN_input) * (2 ** (7 * self.additional_pars[...,:3]))
 
-                    dx1dt = -x1 + g
-                    dx2dt = -x2 + B * g - beta * x2
+                    x, y, z, u, v, g = torch.unbind(x_input, dim=-1)
+                    u1_prime, u2_prime, u3_prime = torch.unbind(ANN_output, dim=-1)
+                    
+                    omega = self.additional_pars[-4] * 10
+                    sigma = self.additional_pars[-3] * 10
+                    rho = self.additional_pars[-2]
+                    eta = self.additional_pars[-1] * 10
 
-                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    alpha, uf, _, _, _, _, _, _, uc1_prime, uc2_prime, uc3_prime = datagen.par_fun()
+
+                    output = []
+
+                    output.append(-alpha * x + u1_prime * x - uc1_prime * x)
+                    output.append(-alpha * y + u2_prime * y - uc2_prime * y)
+                    output.append(-alpha * z + u3_prime * z - uc3_prime * z)
+                    output.append(alpha * (uf - u) - u1_prime * x)
+                    output.append(-alpha * v + omega * u1_prime * x - u2_prime * y - sigma * u3_prime * z)
+                    output.append(-alpha * g + rho * u2_prime * y + eta * u3_prime * z)
+
+
+                    out = torch.stack((output), dim=-1)
                     return out
         elif config["MODEL"]["Parameters"] == 'Fixed':
             class my_Network(Network):
                 def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
                              inv_norm_func=lambda input, device: input, init_available=True, device=None, 
-                             tf_prop=1., integrator='RK4', add_par_num=0):
+                             tf_prop=1., integrator='RK4', add_par_num=2):
                     super(my_Network, self).__init__(network, train_size, xdim, norm_func,
                              inv_norm_func, init_available, device, 
                              tf_prop, integrator, add_par_num)
-                    self.fixed_parameters = torch.tensor([11, 3]).to(self.device)
-                def output(self, x, par):
 
-                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-                    g = self.net(ANN_input)[...,0]
+                    # self.additional_pars = torch.nn.Parameter((torch.zeros(2)-0.5).to(self.device), 
+                    #                             requires_grad = True)
+                    self.additional_pars = torch.nn.Parameter((torch.tensor([0.2,-0.5])).to(self.device), 
+                                                                    requires_grad = True)
 
-                    x1 = x[...,0]
-                    x2 = x[...,1]
-                    B = self.fixed_parameters[0]
-                    beta = self.fixed_parameters[1]
+                def output(self, x_input, par):
 
-                    dx1dt = -x1 + g
-                    dx2dt = -x2 + B * g - beta * x2
+                    ANN_input = self.norm_func(x_input)[...,[0,2,3,4,5]]
+                    ANN_output = self.net(ANN_input) * (2 ** (7 * self.additional_pars))
 
-                    out = torch.stack((dx1dt,dx2dt), dim=-1)
+                    x, y, z, u, v, g = torch.unbind(x_input, dim=-1)
+
+                    # u1_prime, u2_prime, u3_prime = torch.unbind(ANN_output, dim=-1)
+                    u1_prime_x, u3_prime_z = torch.unbind(ANN_output, dim=-1)
+                    # u2_prime = torch.zeros(u1_prime.shape).to(self.device)
+
+                    alpha, uf, omega, sigma, rho, eta, _, _, uc1_prime, _, uc3_prime = datagen.par_fun(D=1/7.3, sf=2.5)
+
+
+                    output = []
+
+                    # output.append(-alpha * x + u1_prime * x - uc1_prime * x)
+                    # output.append(torch.zeros(output[-1].shape).to(self.device))
+                    # output.append(-alpha * z + u3_prime * z - uc3_prime * z)
+                    # output.append(alpha * (uf - u) - u1_prime * x)
+                    # output.append(-alpha * v + omega * u1_prime * x - u2_prime * y - sigma * u3_prime * z)
+                    # output.append(-alpha * g + rho * u2_prime * y + eta * u3_prime * z)
+
+                    output.append(-alpha * x + u1_prime_x - uc1_prime * x)
+                    output.append(torch.zeros(output[-1].shape).to(self.device))
+                    output.append(-alpha * z + u3_prime_z - uc3_prime * z)
+                    output.append(alpha * (uf - u) - u1_prime_x)
+                    output.append(-alpha * v + omega * u1_prime_x - sigma * u3_prime_z)
+                    output.append(-alpha * g + eta * u3_prime_z)
+
+                    out = torch.stack((output), dim=-1)
+
+                    # print('Fixed Outputs')
+                    # print(x_input.shape)
+                    # print(x_input)
+                    # print(ANN_input.shape)
+                    # print(ANN_input)
+                    # print(ANN_output.shape)
+                    # print(ANN_output)
+                    # print(out.shape)
+                    # print(out)
+                    # assert False
                     return out
         else:
             raise ValueError("Tell me whether to train the parameters!")
@@ -129,8 +189,12 @@ def main(config):
         raise ValueError("Tell me what box to use!")
             
     
-    network = my_Network(mlp, config["DATA"]["N_TRAIN"], 2, norm_func=norm_func, inv_norm_func=inv_norm_func, 
-                      init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
+    if config["DATA"]["DUP_REVERSE"]:
+        network = my_Network(mlp, config["DATA"]["N_TRAIN"]*2, 6, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+                        init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
+    else:
+        network = my_Network(mlp, config["DATA"]["N_TRAIN"], 6, norm_func=norm_func, inv_norm_func=inv_norm_func, 
+                        init_available=config["DATA"]["INIT_AVAILABLE"], integrator='RK4')
     
     print(network)
     # Move network to corresponding device (cpu or gpu)
@@ -150,8 +214,8 @@ def main(config):
     val_loss_list = []
     
     for epoch in progress_bar:
-        train_loss = model.train(epoch)
         val_loss = model.validate(epoch)
+        train_loss = model.train(epoch)
         train_loss_list.append(train_loss)
         val_loss_list.append(val_loss)
         progress_bar.set_description(progress(train_loss, val_loss))

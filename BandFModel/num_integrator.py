@@ -9,6 +9,27 @@ def torch_odeint(func, tspan, init, pars, dt):
 
     return t_arr, x_out.detach().numpy().T
 
+def RK2_int(func, tspan, init, pars, dt):
+
+    t_arr = np.arange(*tspan, step=dt)
+    x_out = []
+    x_out.append(init)
+
+    x_in = init
+
+    for i, t in enumerate(t_arr[1:]):
+        k1 = func(t, x_in, pars)
+        x_in = x_out[i] + k1 * dt
+
+        k2 = func(t + dt, x_in, pars)
+        x_in = x_out[i] + (dt/2) * (k1 + k2)
+
+        x_out.append(x_in)
+    
+    x_out = np.array(x_out)
+
+    return t_arr, x_out.T
+
 def RK4_int(func, tspan, init, pars, dt):
 
     t_arr = np.arange(*tspan, step=dt)

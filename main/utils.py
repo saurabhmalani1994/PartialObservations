@@ -36,16 +36,16 @@ class MLP(nn.Module):
         self.activation = nn.SiLU()
         
         self.layers.append(nn.Linear(input_dim,hidden_cells[0]))
-#         nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
-#         nn.init.constant_(self.layers[-1].bias, 0)
+        nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
+        nn.init.constant_(self.layers[-1].bias, 0)
         for i in range(len(hidden_cells)-1):
             self.layers.append(nn.Linear(hidden_cells[i],hidden_cells[i+1]))
-#             nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
-#             nn.init.constant_(self.layers[-1].bias, 0)
+            nn.init.kaiming_normal_(self.layers[-1].weight, mode='fan_in', nonlinearity='relu')
+            nn.init.constant_(self.layers[-1].bias, 0)
             
         self.output_layer = nn.Linear(hidden_cells[-1], output_dim)
-#         nn.init.xavier_normal_(self.output_layer.weight, gain=nn.init.calculate_gain('linear'))
-#         nn.init.constant_(self.output_layer.bias, 0)
+        nn.init.xavier_normal_(self.output_layer.weight, gain=nn.init.calculate_gain('linear'))
+        nn.init.constant_(self.output_layer.bias, 0)
         
     def forward(self, input):
         for layer in self.layers:
@@ -100,7 +100,9 @@ class Network(nn.Module):
             raise ValueError("Invalid parameter values found")
         
         dt = (time[:,1:,:] - time[:,:-1,:])
-        
+        # print(dt[:,:,:])
+        # assert False
+
         x_arr = x.unbind(1)
         par_arr = par.unbind(1)
         dt_arr = dt.unbind(1)
@@ -122,6 +124,7 @@ class Network(nn.Module):
                 x_input = torch.where(torch.isnan(x_input_temp), # Where condition
                                      x_out[i], # True clause
                                      x_input_temp) # False clause
+                # assert False, 'Teacher Forcing!'
 #                 if i == 0:
 #                     print(x_input)
 #                     print('========================')
@@ -134,6 +137,12 @@ class Network(nn.Module):
             out = self.integrator(x_input, p_input, dt_input)
             x_out.append(out)
             
+        #     print('Im forward')
+        #     print(x_input_temp)
+        #     print(x_input)
+        #     print(out)
+        # assert False
+
 #             if (i==0):
 #                 print('==============================')
 #                 print('Outs')
@@ -144,18 +153,21 @@ class Network(nn.Module):
 #                 print(out)
 #                 print('==============================')
 
+
         x_outs = torch.stack(x_out[:],dim=1)
         return x_outs
     
     def output(self, x, par):
         
         ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-        out = self.net(ANN_input)        
+        out = self.inv_norm_func(self.net(ANN_input))     
+
+
         return out
     
     def raw_output(self, x, par):
         ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
-        out = self.net(ANN_input)        
+        out = self.inv_norm_func(self.net(ANN_input))   
         return out
 
     def Euler(self, x, par, dt):
@@ -178,8 +190,9 @@ class Network(nn.Module):
     def RK4(self, x, par, dt):
         
         ANN_input = x
+
         k1 = self.output(x, par)
-    
+
         ANN_input = x + k1 * dt / 2
         k2 = self.output(ANN_input, par)
         
@@ -262,8 +275,8 @@ class Model_Train():
         
         self.optimizer = torch.optim.AdamW([
         {'params': ANN_params},
-        {'params': init_params, 'lr': self.lr/1},
-        {'params': other_params, 'lr': self.lr/1}],
+        {'params': init_params, 'lr': self.lr/5},
+        {'params': other_params, 'lr': self.lr/5}],
             lr=self.lr, amsgrad=True, weight_decay=0.01)
 
 #         self.criterion = my_Loss(reduction='mean')
@@ -276,7 +289,7 @@ class Model_Train():
         self.lr_track = []
 
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, patience=100, factor=0.5, min_lr=0.000001)
+            self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=110)
 
         self.epoch_shift = 5000000
 
@@ -291,10 +304,10 @@ class Model_Train():
         
         # Switch to OneCycleLR LR rate scheduler
         if epoch == self.epoch_shift:
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr, self.lr], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr/5, self.lr/5], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
-#             self.net.tf_prop = torch.tensor(0.).float()
-#             print('Shifting to Autoregressive at epoch: ' + str(epoch))
+            self.net.tf_prop = torch.tensor(0.2).float()
+            print('Shifting to Autoregressive at epoch: ' + str(epoch))
  
         for (x, p, t, index) in self.dataloader_train:
             self.optimizer.zero_grad()
@@ -306,6 +319,20 @@ class Model_Train():
             x_out_norm = self.norm_func(x[0].to(self.device))
             x_out_hat_norm = self.norm_func(xout_hat)
             
+            # print('Im model')
+            # print(x_out_norm)
+            # print(x_out_hat_norm)
+            # assert False
+
+            # print('training time shape')
+            # print('preds')
+            # print(xout_hat[:,:2,:])
+            # print(x_out_hat_norm[:,:2,:])
+            # print('trues')
+            # print(x[0].to(self.device)[:,:2,:])
+            # print(x_out_norm[:,:2,:])
+            # assert False
+
             # Calculate loss
             loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)], x_out_hat_norm[~torch.isnan(x_out_norm)])
             loss.backward()
