@@ -12,12 +12,12 @@ np.random.seed(1234)
 
 def initial_conditions(ic='random'):
     if ic == 'random':
-        myvar0 = np.concatenate((np.random.uniform(0.01,100,1),
-                         np.random.uniform(0.01,1.5,1),
-                         np.random.uniform(0.01,1.5,1),
-                         np.random.uniform(0.01,250,1),
-                         np.random.uniform(0.01,2200,1),
-                         np.random.uniform(0.01,4.5,1)))
+        # myvar0 = np.concatenate((np.random.uniform(0.01,100,1),
+        #                  np.random.uniform(0.01,1.5,1),
+        #                  np.random.uniform(0.01,1.5,1),
+        #                  np.random.uniform(0.01,250,1),
+        #                  np.random.uniform(0.01,2200,1),
+        #                  np.random.uniform(0.01,4.5,1)))
 
         f = np.load('minmax/initialcond.npz')
         myvar0 = f['arr_0']
@@ -26,10 +26,13 @@ def initial_conditions(ic='random'):
         mean = ((np.max(myvar0, axis=1) - np.min(myvar0, axis=1)) / 2 + np.min(myvar0, axis=1))[0,:]
         init = myvar0[0, index, :]
         loc = (mean - init) / 2
-        loc[1:] = 0
+        # loc[1:] = 0
+
+        loc[1] = 0.2
+        range[1] = 1
 
         init = np.abs(init + np.random.normal(loc=loc, scale=range/10))
-        init[1] = 0
+        # init[1] = 0.
 
         # myvar0 = np.concatenate((50 * (1 + np.random.uniform(size=1)),
         #                          0.75 * (1 + np.random.uniform(size=1)),

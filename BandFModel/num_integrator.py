@@ -30,15 +30,20 @@ def RK2_int(func, tspan, init, pars, dt):
 
     return t_arr, x_out.T
 
-def RK4_int(func, tspan, init, pars, dt):
+def RK4_int(func, tspan, init, pars, max_dt, teval=None):
 
-    t_arr = np.arange(*tspan, step=dt)
+    if teval is None:
+        t_arr = np.arange(*tspan, step=max_dt)
+    else:
+        t_arr = teval
     x_out = []
-    x_out.append(init)
+    x_out.append(np.squeeze(init))
 
-    x_in = init
+    x_in = x_out[-1]
 
     for i, t in enumerate(t_arr[1:]):
+        dt = t_arr[i+1] - t_arr[i]
+
         k1 = func(t, x_in, pars)
         x_in = x_out[i] + k1 * dt / 2
 
@@ -51,7 +56,7 @@ def RK4_int(func, tspan, init, pars, dt):
         k4 = func(t + dt, x_in, pars)
         x_in = x_out[i] + (dt/6) * (k1 + 2*k2 + 2*k3 + k4)
 
-        x_out.append(x_in)
+        x_out.append(np.squeeze(x_in))
     
     x_out = np.array(x_out)
 
@@ -61,9 +66,9 @@ def DOPRI_int(func, tspan, init, pars, dt):
 
     t_arr = np.arange(*tspan, step=dt)
     x_out = []
-    x_out.append(init)
+    x_out.append(np.squeeze(init))
 
-    x_in = init
+    x_in = x_out[-1]
 
     for i, t in enumerate(t_arr[1:]):
         k1 = func(t, x_in, pars)
@@ -90,7 +95,7 @@ def DOPRI_int(func, tspan, init, pars, dt):
                         + k3*dt*(500/1113) + k4*dt*(125/192) \
                         - k5*dt*(2187/6784) + k6*dt*(11/84)
 
-        x_out.append(x_in)
+        x_out.append(np.squeeze(x_in))
     
     x_out = np.array(x_out)
 

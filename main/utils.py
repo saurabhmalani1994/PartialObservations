@@ -252,6 +252,8 @@ class Model_Train():
         self.net = network.to(self.device)
         self.norm_func = network.norm_func
 
+        self.var_factor = torch.tensor([1,10,1,1,1,1]).to(self.device)
+
         self.trainable_parameters = \
             sum(p.numel() for p in self.net.parameters() if p.requires_grad)
         print('Trainable parameters: '+str(self.trainable_parameters))
@@ -291,7 +293,7 @@ class Model_Train():
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=110)
 
-        self.epoch_shift = 5000000
+        self.epoch_shift = 500
 
         self.total_steps_OneCycle = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) \
                                * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
@@ -306,8 +308,8 @@ class Model_Train():
         if epoch == self.epoch_shift:
             self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr/5, self.lr/5], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
-            self.net.tf_prop = torch.tensor(0.2).float()
-            print('Shifting to Autoregressive at epoch: ' + str(epoch))
+            # self.net.tf_prop = torch.tensor(0.2).float()
+            # print('Shifting to Autoregressive at epoch: ' + str(epoch))
  
         for (x, p, t, index) in self.dataloader_train:
             self.optimizer.zero_grad()
@@ -316,8 +318,8 @@ class Model_Train():
             xout_hat = self.net(x_in.to(self.device), p[0].to(self.device), t[0].to(self.device), index)
             
             # Normalize vectors before loss calculation
-            x_out_norm = self.norm_func(x[0].to(self.device))
-            x_out_hat_norm = self.norm_func(xout_hat)
+            x_out_norm = self.norm_func(x[0].to(self.device)) * self.var_factor
+            x_out_hat_norm = self.norm_func(xout_hat) * self.var_factor
             
             # print('Im model')
             # print(x_out_norm)
@@ -334,9 +336,13 @@ class Model_Train():
             # assert False
 
             # Calculate loss
-            loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)], x_out_hat_norm[~torch.isnan(x_out_norm)])
+
+            loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)],
+                             x_out_hat_norm[~torch.isnan(x_out_norm)])
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.1)
+            # assert False
+
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.)
             
             self.optimizer.step()
             
@@ -356,6 +362,7 @@ class Model_Train():
             self.lr_track.append(self.scheduler._last_lr)
         
         self.train_loss.append(sum_loss/cnt)
+
         return sum_loss/cnt
     
     def validate(self, epoch):
@@ -369,11 +376,13 @@ class Model_Train():
                 xout_hat = self.net(x_in.to(self.device), p[0].to(self.device), t[0].to(self.device), index=None)
 
                 # Normalize vectors before loss calculation
-                x_out_norm = self.norm_func(x[0].to(self.device))
-                x_out_hat_norm = self.norm_func(xout_hat)
+                x_out_norm = self.norm_func(x[0].to(self.device)) * self.var_factor
+                x_out_hat_norm = self.norm_func(xout_hat) * self.var_factor
+
 
                 # Calculate loss
-                loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)], x_out_hat_norm[~torch.isnan(x_out_norm)])
+                loss = self.criterion(x_out_norm[~torch.isnan(x_out_norm)],
+                                 x_out_hat_norm[~torch.isnan(x_out_norm)])
 
                 sum_loss += loss.detach().cpu().numpy()
                 cnt += 1
