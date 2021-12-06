@@ -103,36 +103,71 @@ def main(config):
                              inv_norm_func, init_available, device, 
                              tf_prop, integrator, add_par_num)
 
-                    self.additional_pars = torch.nn.Parameter((torch.cat(((torch.zeros(3)-2), (torch.zeros(4) + 1)))).to(self.device), 
-                                                requires_grad = True)
+                    self.additional_pars = torch.nn.Parameter((torch.cat(((torch.tensor([0.4476, -0.4859, -0.6419])), 
+                                                                          (torch.zeros(4) + 1)))).to(self.device), 
+                                                                requires_grad = True)
+
+                # def output(self, x_input, par):
+
+                #     ANN_input = self.norm_func(x_input)[...,[0,2,3,4,5]]
+                #     ANN_output = self.net(ANN_input) * (2 ** (7 * self.additional_pars[...,:3]))
+
+                #     x, y, z, u, v, g = torch.unbind(x_input, dim=-1)
+                #     u1_prime, u2_prime, u3_prime = torch.unbind(ANN_output, dim=-1)
+                    
+                #     omega = self.additional_pars[-4] * 10
+                #     sigma = self.additional_pars[-3] * 10
+                #     rho = self.additional_pars[-2]
+                #     eta = self.additional_pars[-1] * 10
+
+                #     alpha, uf, _, _, _, _, _, _, uc1_prime, uc2_prime, uc3_prime = datagen.par_fun()
+
+                #     output = []
+
+                #     output.append(-alpha * x + u1_prime * x - uc1_prime * x)
+                #     output.append(-alpha * y + u2_prime * y - uc2_prime * y)
+                #     output.append(-alpha * z + u3_prime * z - uc3_prime * z)
+                #     output.append(alpha * (uf - u) - u1_prime * x)
+                #     output.append(-alpha * v + omega * u1_prime * x - u2_prime * y - sigma * u3_prime * z)
+                #     output.append(-alpha * g + rho * u2_prime * y + eta * u3_prime * z)
+
+
+                #     out = torch.stack((output), dim=-1)
+                #     return out
 
                 def output(self, x_input, par):
-
-                    ANN_input = self.norm_func(x_input)[...,[0,2,3,4,5]]
-                    ANN_output = self.net(ANN_input) * (2 ** (7 * self.additional_pars[...,:3]))
+                    ANN_input = self.norm_func(x_input)
+                    ANN_output = self.net(ANN_input)
+                    ANN_output = ANN_output * (100 ** (self.additional_pars[:3]))
 
                     x, y, z, u, v, g = torch.unbind(x_input, dim=-1)
-                    u1_prime, u2_prime, u3_prime = torch.unbind(ANN_output, dim=-1)
-                    
+
+                    u1_prime_x, u2_prime_y, u3_prime_z = torch.unbind(ANN_output, dim=-1)                
+
                     omega = self.additional_pars[-4] * 10
                     sigma = self.additional_pars[-3] * 10
-                    rho = self.additional_pars[-2]
-                    eta = self.additional_pars[-1] * 10
+                    rho = self.additional_pars[-2] / 10
+                    eta = self.additional_pars[-1]
 
                     alpha, uf, _, _, _, _, _, _, uc1_prime, uc2_prime, uc3_prime = datagen.par_fun()
 
                     output = []
 
-                    output.append(-alpha * x + u1_prime * x - uc1_prime * x)
-                    output.append(-alpha * y + u2_prime * y - uc2_prime * y)
-                    output.append(-alpha * z + u3_prime * z - uc3_prime * z)
-                    output.append(alpha * (uf - u) - u1_prime * x)
-                    output.append(-alpha * v + omega * u1_prime * x - u2_prime * y - sigma * u3_prime * z)
-                    output.append(-alpha * g + rho * u2_prime * y + eta * u3_prime * z)
-
+                    output.append(-alpha * x + u1_prime_x - uc1_prime * x)
+                    output.append(-alpha * y + u2_prime_y - uc2_prime * y)
+                    output.append(-alpha * z + u3_prime_z - uc3_prime * z)
+                    output.append(alpha * (uf - u) - u1_prime_x)
+                    output.append(-alpha * v + omega * u1_prime_x - u2_prime_y - sigma * u3_prime_z)
+                    output.append(-alpha * g + rho * u2_prime_y + eta * u3_prime_z)
 
                     out = torch.stack((output), dim=-1)
                     return out
+                def raw_output(self, x_input, par):
+
+                    ANN_input = self.norm_func(x_input)
+                    ANN_output = self.net(ANN_input) * (2 ** (7 * self.additional_pars))
+
+                    return ANN_output
         elif config["MODEL"]["Parameters"] == 'Fixed':
             class my_Network(Network):
                 def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
@@ -195,17 +230,6 @@ def main(config):
                     output.append(-alpha * g + rho * u2_prime_y + eta * u3_prime_z)
 
                     out = torch.stack((output), dim=-1)
-
-                    # print('Fixed Outputs')
-                    # print(x_input.shape)
-                    # print(x_input)
-                    # print(ANN_input.shape)
-                    # print(ANN_input)
-                    # print(ANN_output.shape)
-                    # print(ANN_output)
-                    # print(out.shape)
-                    # print(out)
-                    # assert False
                     return out
                 def raw_output(self, x_input, par):
 

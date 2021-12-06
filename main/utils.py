@@ -293,7 +293,7 @@ class Model_Train():
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=110)
 
-        self.epoch_shift = 500
+        self.epoch_shift = 500000
 
         self.total_steps_OneCycle = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) \
                                * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
