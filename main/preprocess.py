@@ -110,11 +110,11 @@ class Dataset(torch.utils.data.Dataset):
             while t_current < t_samp[i+1]:
                 dt = -1
                 while dt < 0:
-                    dt = t_step * (1 - np.random.gamma(shape=1, scale=0.1))
-                    # dt = max_dt
+                    # dt = t_step * (1 - np.random.gamma(shape=1, scale=0.1))
+                    dt = max_dt
                 t_current = t_current + dt
                 t_add.append(dt)
-            random.shuffle(t_add)
+            # random.shuffle(t_add)
             t_current = t_arr[-1]
             for item in t_add:
                 t_current = t_current + item
