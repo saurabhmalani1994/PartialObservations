@@ -63,7 +63,7 @@ def main(config):
     
     if config["MODEL"]["BOX"] == 'Black':
         # Create the network architecture
-        mlp = MLP(5, config["MODEL"]["NUM_HIDDEN"], 6)
+        mlp = MLP(6, config["MODEL"]["NUM_HIDDEN"], 6)
         
         class my_Network(Network):
             def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
@@ -78,15 +78,10 @@ def main(config):
             def output(self, x, par):
 
                 # ANN_input = torch.cat((self.norm_func(x), par/20), dim=-1)
-                ANN_input = self.norm_func(x)[...,[0,2,3,4,5]]
-                out = self.net(ANN_input) #* (2 ** (self.additional_pars))
-                # print(out)
-                out = self.inv_norm_func(out) * (2 ** (7 * self.additional_pars))
-                zeros = torch.zeros((out[...,[0]].shape)).to(self.device)
-                out = torch.cat((out[...,[0]],zeros,out[...,2:]), -1)
-                # print(out)
-                # assert False
-                # out = out * torch.tensor([1000, 5e-168, 2.7, 1000, 17000, 6.2]).to(self.device)
+                ANN_input = self.norm_func(x)
+                out = self.net(ANN_input)
+                out = self.inv_norm_func(out) * (100 ** (self.additional_pars))
+
                 return out
     
     elif config["MODEL"]["BOX"] == 'Grey' or config["MODEL"]["BOX"] == 'Gray':
