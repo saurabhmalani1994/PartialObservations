@@ -252,7 +252,7 @@ class Model_Train():
         self.net = network.to(self.device)
         self.norm_func = network.norm_func
 
-        self.var_factor = torch.tensor([1,10,1,1,1,1]).to(self.device)
+        self.var_factor = torch.tensor([1,1,1,1,1,1]).to(self.device)
 
         self.trainable_parameters = \
             sum(p.numel() for p in self.net.parameters() if p.requires_grad)
@@ -291,7 +291,7 @@ class Model_Train():
         self.lr_track = []
 
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=110)
+            self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=200)
 
         self.epoch_shift = 500000
 

@@ -73,7 +73,7 @@ def main(config):
                          inv_norm_func, init_available, device, 
                          tf_prop, integrator, add_par_num)
 
-                self.additional_pars = torch.nn.Parameter((torch.zeros(6)-1).to(self.device), requires_grad = True) 
+                self.additional_pars = torch.nn.Parameter((torch.zeros(6)).to(self.device), requires_grad = True) 
 
             def output(self, x, par):
 

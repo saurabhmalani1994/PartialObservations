@@ -32,7 +32,7 @@ def initial_conditions(ic='random'):
         range[1] = 1
 
         init = np.abs(init + np.random.normal(loc=loc, scale=range/10))
-        # init[1] = 0.
+        init[1] = 0.
 
         # myvar0 = np.concatenate((50 * (1 + np.random.uniform(size=1)),
         #                          0.75 * (1 + np.random.uniform(size=1)),
