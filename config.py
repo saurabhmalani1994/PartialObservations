@@ -2,8 +2,8 @@ config = {}
 config["DATA"] = {}
 config["DATA"]["TMAX"] = 6
 # config["DATA"]["L_TRAJECTORIES"] = 200 # 200 equal lengths is dt = 0.02
-config["DATA"]["N_TRAIN"] = 9 # Num of training traj
-config["DATA"]["N_VAL"] = 7
+config["DATA"]["N_TRAIN"] = 77 # Num of training traj
+config["DATA"]["N_VAL"] = 11
 config["DATA"]["N_TEST"] = 1
 config["DATA"]["PATH"] = 'data/'
 config["DATA"]["SKIP_TIME"] = 1

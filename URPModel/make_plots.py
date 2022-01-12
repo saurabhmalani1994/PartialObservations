@@ -4,18 +4,18 @@ sys.path.append("..")
 import numpy as np
 import matplotlib.pyplot as plt
 from config import config
-from . import helper
+from URPModel import helper
 
 def main(config, Da=config["PAR"]["Da"]):
     
-    train_loss = np.load('data/model__training_loss.npy')
-    val_loss = np.load('data/model__validation_loss.npy')
-    epoch_list = np.load('data/model__lr_epoch.npy')
-    lr_list = np.load('data/model__lr_track.npy', allow_pickle=True)
+    train_loss = np.load('/home/smalani/PartialObservations/data/model__training_loss.npy')
+    val_loss = np.load('/home/smalani/PartialObservations/data/model__validation_loss.npy')
+    epoch_list = np.load('/home/smalani/PartialObservations/data/model__lr_epoch.npy')
+    lr_list = np.load('/home/smalani/PartialObservations/data/model__lr_track.npy', allow_pickle=True)
     
 #     print(lr_list)
     
-    f = open('minmax/maxmin.txt', 'r')
+    f = open('/home/smalani/PartialObservations/minmax/maxmin.txt', 'r')
     x1max = float(f.readline())
     x1min = float(f.readline())
     x2max = float(f.readline())
@@ -34,7 +34,7 @@ def main(config, Da=config["PAR"]["Da"]):
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
-    plt.savefig('Figures/trainingloss.png')
+    plt.savefig('/home/smalani/PartialObservations/Figures/trainingloss.png')
 
     fig, ax2 = plt.subplots()
     ax2.semilogy(range(len(train_loss)),train_loss,label='training loss')
@@ -47,7 +47,7 @@ def main(config, Da=config["PAR"]["Da"]):
     ax.set_xlabel('Epochs')
     ax.set_ylabel('Learning Rate')
 
-    plt.savefig('Figures/trainingloss_learningrate.png')
+    plt.savefig('/home/smalani/PartialObservations/Figures/trainingloss_learningrate.png')
     
 #     Da_list = [0.2] * 10
     Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]#*10
