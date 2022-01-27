@@ -29,4 +29,4 @@ config["TRAINING"]["EPOCHS"] = 5000 # 1000 # 1259 # 2539 # 5260
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [32, 32]
 config["MODEL"]["BOX"] = 'Grey'
-config["MODEL"]["Parameters"] = 'Trainable'
+config["MODEL"]["Parameters"] = 'Fixed'
