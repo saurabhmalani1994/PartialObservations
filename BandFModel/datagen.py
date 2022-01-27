@@ -29,9 +29,9 @@ def initial_conditions(ic='random'):
         # loc[1:] = 0
 
         loc[1] = 0.2
-        range[1] = 1
+        range[1] = 0.2
 
-        init = np.abs(init + np.random.normal(loc=loc, scale=range/10))
+        init = np.abs(init + np.random.normal(loc=loc, scale=range/20))
         # init[1] = 0.
 
         # myvar0 = np.concatenate((50 * (1 + np.random.uniform(size=1)),
