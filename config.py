@@ -14,7 +14,7 @@ config["DATA"]["MAX_DELTA_T"] = 10 # Timestep in integrator
 config["DATA"]["DT_MU"] = config["DATA"]["TMAX"] / (config["DATA"]["X_SAMPLE_NUM"][0] - 1)
 config["DATA"]["DT_SIGMA"] = config["DATA"]["DT_MU"] / 2
 config["DATA"]["REG_TIME"] = False   # True for regular sampling in time (Delta_T = const), False for random sampling in time Uniform~ (0, Delta_T)
-config["DATA"]["INIT_AVAILABLE"] = False   # True for ALL initial conditions available at time 0, False for Not available
+config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
 config["DATA"]["FULL_OBSERVATIONS"] = False   # Only activates for REG_TIME = False ## NOT IMPLEMENTED FOR BandF YET
 config["DATA"]["DUP_REVERSE"] = False   # To train forwards AND backwards in time!
 
