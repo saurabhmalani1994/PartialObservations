@@ -177,20 +177,23 @@ def main(config):
                              inv_norm_func, init_available, device, 
                              tf_prop, integrator, add_par_num)
 
-                    # self.additional_pars = torch.nn.Parameter((torch.zeros(2)-0.5).to(self.device), 
+                    # self.additional_pars = torch.nn.Parameter((torch.zeros(3)).to(self.device), 
                     #                             requires_grad = True)
-                    self.additional_pars = torch.nn.Parameter((torch.tensor([0.4476, -0.4859, -0.6419])).to(self.device), 
+                    self.additional_pars = torch.nn.Parameter((torch.tensor([0.4877, -0.7982, -0.6599])).to(self.device), 
                                                                     requires_grad = True)
+                    # self.additional_pars = torch.nn.Parameter((torch.tensor([0.3789, -0.9911, -0.7526])).to(self.device), 
+                    #                                                 requires_grad = True)
 
                     
 
                 def output(self, x_input, par):
                     
                     # print('outputs')
-                    ANN_input = self.norm_func(x_input)
-                    ANN_output = self.net(ANN_input)
+                    ANN_input_out = self.norm_func(x_input)
+                    ANN_input = torch.clip(ANN_input_out, min=-1., max=2.)
+                    ANN_output_out = self.net(ANN_input)
                     # print(ANN_output)
-                    ANN_output = ANN_output * (100 ** (self.additional_pars))
+                    ANN_output = ANN_output_out * (100 ** (self.additional_pars))
                     # print(ANN_output)
                     # assert False
 
@@ -230,6 +233,14 @@ def main(config):
                     output.append(-alpha * g + rho * u2_prime_y + eta * u3_prime_z)
 
                     out = torch.stack((output), dim=-1)
+
+                    # print('grey box fixed output fun')
+                    # print(ANN_input)
+                    # print(ANN_output_out)
+                    # print(ANN_output)
+                    # print(out)
+                    # assert False
+
                     return out
                 def raw_output(self, x_input, par):
 

@@ -293,7 +293,7 @@ class Model_Train():
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, patience=100, factor=0.5, min_lr=0.000001, cooldown=110)
 
-        self.epoch_shift = 500000
+        self.epoch_shift = 50000000
 
         self.total_steps_OneCycle = int(np.ceil(config["DATA"]["N_TRAIN"]/config["TRAINING"]["BATCH_SIZE"]) \
                                * (config["TRAINING"]["EPOCHS"]-self.epoch_shift))
@@ -306,7 +306,7 @@ class Model_Train():
         
         # Switch to OneCycleLR LR rate scheduler
         if epoch == self.epoch_shift:
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr/5, self.lr/5], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
+            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=[self.lr,self.lr, self.lr], total_steps=self.total_steps_OneCycle, final_div_factor=1e2,
                                                             )
             # self.net.tf_prop = torch.tensor(0.2).float()
             # print('Shifting to Autoregressive at epoch: ' + str(epoch))
@@ -320,10 +320,28 @@ class Model_Train():
             # Normalize vectors before loss calculation
             x_out_norm = self.norm_func(x[0].to(self.device)) * self.var_factor
             x_out_hat_norm = self.norm_func(xout_hat) * self.var_factor
+
+            # # Weigh the first available datapoint higher
+            # fac = 10
+            # for i in range(x_out_norm.shape[0]):
+            #     for j in range(x_out_norm.shape[2]):
+            #         x_out_norm[i,:,j][~torch.isnan(x_out_norm)[i,:,j]][:5] = \
+            #             x_out_norm[i,:,j][~torch.isnan(x_out_norm)[i,:,j]][:5] * fac
+            #         x_out_hat_norm[i,:,j][~torch.isnan(x_out_norm)[i,:,j]][:5] = \
+            #             x_out_hat_norm[i,:,j][~torch.isnan(x_out_norm)[i,:,j]][:5] * fac
+
             
+            # print('I\'m time')
+            # if epoch > 0:
+            time_var = (9 * torch.exp(-t[0]/10) + 1).to(self.device)
+            x_out_norm = x_out_norm * time_var
+            x_out_hat_norm = x_out_hat_norm * time_var
+
             # print('Im model')
-            # print(x_out_norm)
-            # print(x_out_hat_norm)
+            # print(x_out_norm.shape)
+            # print(x_out_norm[~torch.isnan(x_out_norm)].shape)
+            # print(x_out_hat_norm.shape)
+            # print(x_out_hat_norm[~torch.isnan(x_out_norm)].shape)
             # assert False
 
             # print('training time shape')
@@ -341,8 +359,13 @@ class Model_Train():
                              x_out_hat_norm[~torch.isnan(x_out_norm)])
             loss.backward()
             # assert False
+            
+            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
 
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.)
+            # if epoch < 500:
+            #     torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.1)
+            # else:
+            #     torch.nn.utils.clip_grad_norm_(self.net.parameters(), 0.1)
             
             self.optimizer.step()
             
@@ -356,7 +379,7 @@ class Model_Train():
             cnt += 1
         
 #         Use for lr reduce on plateau
-        if epoch < self.epoch_shift:# or epoch <= 1:
+        if epoch < self.epoch_shift and epoch > 0:
             self.scheduler.step(sum_loss / cnt)
             self.lr_epoch.append(epoch)
             self.lr_track.append(self.scheduler._last_lr)
@@ -378,6 +401,10 @@ class Model_Train():
                 # Normalize vectors before loss calculation
                 x_out_norm = self.norm_func(x[0].to(self.device)) * self.var_factor
                 x_out_hat_norm = self.norm_func(xout_hat) * self.var_factor
+
+                time_var = (9 * torch.exp(-t[0]/10) + 1).to(self.device)
+                x_out_norm = x_out_norm * time_var
+                x_out_hat_norm = x_out_hat_norm * time_var
 
 
                 # Calculate loss
