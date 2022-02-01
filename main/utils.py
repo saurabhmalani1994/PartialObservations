@@ -277,7 +277,7 @@ class Model_Train():
         
         self.optimizer = torch.optim.AdamW([
         {'params': ANN_params},
-        {'params': init_params, 'lr': self.lr/5},
+        {'params': init_params, 'lr': self.lr},
         {'params': other_params, 'lr': self.lr/5}],
             lr=self.lr, amsgrad=True, weight_decay=0.01)
 

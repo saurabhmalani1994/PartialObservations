@@ -36,13 +36,13 @@ def main(config):
                                 shuffle=True, num_workers=1, pin_memory=True)
     
     
-    # print('FalsityFalse')
+    print('Saving Training Data')
     # print(dataset_train.x.shape)
-    # np.save("data/training_data",data_train[0])
-    # np.save("data/training_data_par",data_train[1])
-    # np.save("data/training_data_detail_t",data_train[2])
-    # np.save("data/training_data_detail_x",data_train[3])
-    # np.save("data/training_data_detail_par",data_train[4])
+    np.save("data/training_data",data_train[0])
+    np.save("data/training_data_par",data_train[1])
+    np.save("data/training_data_detail_t",data_train[2])
+    np.save("data/training_data_detail_x",data_train[3])
+    np.save("data/training_data_detail_par",data_train[4])
     # assert False
 
     # xmax = np.nanmax(np.nanmax(np.array(dataset_train.x), axis=1), axis=0)
