@@ -333,9 +333,9 @@ class Model_Train():
             
             # print('I\'m time')
             # if epoch > 0:
-            time_var = (9 * torch.exp(-t[0]/10) + 1).to(self.device)
-            x_out_norm = x_out_norm * time_var
-            x_out_hat_norm = x_out_hat_norm * time_var
+            # time_var = (4 * torch.exp(-t[0]/10) + 1).to(self.device)
+            # x_out_norm = x_out_norm * time_var
+            # x_out_hat_norm = x_out_hat_norm * time_var
 
             # print('Im model')
             # print(x_out_norm.shape)
@@ -402,9 +402,9 @@ class Model_Train():
                 x_out_norm = self.norm_func(x[0].to(self.device)) * self.var_factor
                 x_out_hat_norm = self.norm_func(xout_hat) * self.var_factor
 
-                time_var = (9 * torch.exp(-t[0]/10) + 1).to(self.device)
-                x_out_norm = x_out_norm * time_var
-                x_out_hat_norm = x_out_hat_norm * time_var
+                # time_var = (4 * torch.exp(-t[0]/10) + 1).to(self.device)
+                # x_out_norm = x_out_norm * time_var
+                # x_out_hat_norm = x_out_hat_norm * time_var
 
 
                 # Calculate loss
