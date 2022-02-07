@@ -136,7 +136,8 @@ def main(config):
                 #     return out
 
                 def output(self, x_input, par):
-                    ANN_input = self.norm_func(x_input)
+                    ANN_input_out = self.norm_func(x_input)
+                    ANN_input = torch.clip(ANN_input_out, min=-1., max=2.)
                     ANN_output = self.net(ANN_input)
                     ANN_output = ANN_output * (100 ** (self.additional_pars[:3]))
 
