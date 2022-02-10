@@ -83,7 +83,8 @@ def main(config):
             def output(self, x, par):
 
                 # ANN_input = torch.cat((self.norm_func(x), par/20), dim=-1)
-                ANN_input = self.norm_func(x)
+                ANN_input_out = self.norm_func(x)
+                ANN_input = torch.clip(ANN_input_out, min=-1., max=2.)
                 out = self.net(ANN_input)
                 out = self.inv_norm_func(out) * (100 ** (self.additional_pars))
 
