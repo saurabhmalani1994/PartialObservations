@@ -24,9 +24,9 @@ config["PAR"]["sf"] = 2.5
 config["TRAINING"] = {}
 config["TRAINING"]["BATCH_SIZE"] = 512
 config["TRAINING"]["LEARNING_RATE"] = 1e-2
-config["TRAINING"]["EPOCHS"] = 10000 # 1000 # 1259 # 2539 # 5260
+config["TRAINING"]["EPOCHS"] = 20000 # 1000 # 1259 # 2539 # 5260
 
 config["MODEL"] = {}
 config["MODEL"]["NUM_HIDDEN"] = [32, 32]
 config["MODEL"]["BOX"] = 'Grey'
-config["MODEL"]["Parameters"] = 'Fixed'
+config["MODEL"]["Parameters"] = 'Trainable'
