@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 from PartialObservations.config import config
 
 import matplotlib.pyplot as plt
+import torch
 
 np.random.seed(1234)
 
@@ -79,7 +80,9 @@ def torch_ode_fun(t, var, par):
     u2_prime = phi1 * v / (1+v)
     u3_prime = phi2 * v / (sigma + v)
 
-    output = torch.zeros(6)
+    output = []
+    for i in range(6):
+        output.append([])
     
     output[0] = -alpha * x + u1_prime * x - uc1_prime * x
     output[1] = -alpha * y + u2_prime * y - uc2_prime * y
@@ -88,7 +91,7 @@ def torch_ode_fun(t, var, par):
     output[4] = -alpha * v + omega * u1_prime * x - u2_prime * y - sigma * u3_prime * z
     output[5] = -alpha * g + rho * u2_prime * y + eta * u3_prime * z
 
-    return output
+    return torch.stack(output, axis=-1).squeeze()
 
 
 

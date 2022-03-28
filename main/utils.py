@@ -23,8 +23,8 @@ from torch import Tensor
 # import custom_lstms
 import torch.jit as jit
 
-np.random.seed(1234)
-torch.manual_seed(42)
+# np.random.seed(1234)
+# torch.manual_seed(42)
 
 from config import config
 
@@ -62,8 +62,8 @@ class Network(nn.Module):
         super(Network, self).__init__()
         
         if torch.cuda.is_available() and device is None:
-            torch.cuda.manual_seed(42)
-            torch.backends.cudnn.deterministic = True
+            # torch.cuda.manual_seed(42)
+            # torch.backends.cudnn.deterministic = True
             self.device = 'cuda'
         elif not torch.cuda.is_available() and device is None:
             self.device = 'cpu'
@@ -238,8 +238,8 @@ class my_Loss(nn.Module):
 class Model_Train():
     def __init__(self, dataloader_train, dataloader_val, network, learning_rate=config["TRAINING"]["LEARNING_RATE"], device=None):
         if torch.cuda.is_available() and device is None:
-            torch.cuda.manual_seed(42)
-            torch.backends.cudnn.deterministic = True
+            # torch.cuda.manual_seed(42)
+            # torch.backends.cudnn.deterministic = True
             self.device = 'cuda'
         elif not torch.cuda.is_available() and device is None:
             self.device = 'cpu'
