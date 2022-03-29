@@ -9,7 +9,7 @@ import torch
 import random
 
 np.random.seed(1234)
-torch.manual_seed(42)
+# torch.manual_seed(42)
 
 class Dataset(torch.utils.data.Dataset):
 

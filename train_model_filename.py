@@ -268,6 +268,8 @@ def main(config, filename):
     # Move network to corresponding device (cpu or gpu)
     network.to(network.device)
     
+    for p in network.parameters():
+        print(p)
 #     print(network.layers)
 
     # Create model wrapper around architecture
