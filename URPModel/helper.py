@@ -241,8 +241,8 @@ def ODE_Bifurc(y, func, Da, x10):
 
     return (x10-x1_out), (x2-x2_out)
 
-def make_Bifurc_prediction(verbose=False):
-    network = load_network()
+def make_Bifurc_prediction(verbose=False, filename=None):
+    network = load_network(filename)
 #     network(self, x1_input: Tensor, x2_input: Tensor, Da: Tensor)
     
     
@@ -368,7 +368,7 @@ def make_Bifurc_prediction(verbose=False):
     
     
     
-def load_network():
+def load_network(filename=None):
     
 #     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
@@ -468,7 +468,8 @@ def load_network():
     device = 'cpu'
 
     # filename = config["DATA"]["PATH"]+'model_' + '.net'
-    filename = "/home/smalani/PartialObservations/data/"+'model_' + '.net'
+    if filename is None:
+        filename = "/home/smalani/PartialObservations/data/"+'model_' + '.net'
 
     print(filename)
 
@@ -728,3 +729,138 @@ def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45
 #         plt.show()
 #         plt.close()
         
+
+# def make_Bifurc_true_with_LC(verbose=False):
+#     Da_arr = np.linspace(0.2,0.5,100)
+    
+#     stable_ss1 = []
+#     stable_Da1 = []
+    
+#     stable_ss2 = []
+#     stable_Da2 = []
+    
+#     unstable_ss = []
+#     unstable_Da = []
+    
+#     x1max = []
+#     x1min = []
+    
+#     x2max = []
+#     x2min = []
+
+#     x1LC = []
+#     x2LC = []
+    
+#     roots = []
+#     switch = False
+#     root = [0.5, 3]
+#     for i in range(len(Da_arr)):
+#         Da = Da_arr[i]
+        
+#         pars = get_pars(Da)
+        
+#         numpy_f_cstr = lambda y: f_cstr(0, y, *pars)
+#         numpy_f_cstr_integ = lambda t, y: f_cstr(0, y, *pars)
+#         torch_f_cstr = lambda y: myf_cstr_torch(0, y, *pars)
+        
+#         root = fsolve(numpy_f_cstr, root)
+#         J = torch.autograd.functional.jacobian(torch_f_cstr, torch.from_numpy(root), strict=True)
+#         w, v = np.linalg.eig(J)
+        
+        
+#         if np.any(w.real>0):
+#             switch = True
+#             unstable_ss.append(root)
+#             unstable_Da.append(Da)
+            
+#             solved = False
+#             perturb = 0.1
+            
+#             y0 = [root[1], 2]
+#             while not solved:
+#                 x10 = root[0] + perturb
+# #                 y0 = [root[1], 2]
+
+#                 y, infodict, ier, mesg = fsolve(ODE_Bifurc, y0, args=(numpy_f_cstr_integ, Da, x10), full_output=True)
+                
+#                 if ier == 1:
+#                     solved = True
+#                     y0 = y
+#                 else:
+#                     perturb = perturb * 0.5
+                    
+#             y0_int = [x10, y[0]]
+#             t_eval = np.linspace(0, y[1], 1000)
+
+#             sol = solve_ivp(f_cstr, y0=y0_int, t_span=[0, t_eval[-1]],
+#                                 args=pars, t_eval=t_eval,
+#                                 rtol=1e-5, atol=1e-8)
+
+#             x1max.append(np.max(sol.y[0,:]))
+#             x2max.append(np.max(sol.y[1,:]))
+#             x1min.append(np.min(sol.y[0,:]))
+#             x2min.append(np.min(sol.y[1,:]))
+
+#             x1LC.append(sol.y[0,::10])
+#             x2LC.append(sol.y[1,::10])
+                    
+#         else:
+#             if not switch:
+#                 stable_ss1.append(root)
+#                 stable_Da1.append(Da)
+                
+#                 x1max.append(root[0])
+#                 x2max.append(root[1])
+#                 x1min.append(root[0])
+#                 x2min.append(root[1])
+
+#                 x1LC.append(root[0])
+#                 x2LC.append(root[1])
+#             else:
+#                 stable_ss2.append(root)
+#                 stable_Da2.append(Da)
+                
+#                 x1max.append(root[0])
+#                 x2max.append(root[1])
+#                 x1min.append(root[0])
+#                 x2min.append(root[1])
+
+#                 x1LC.append(root[0])
+#                 x2LC.append(root[1])
+        
+#         roots.append(root)
+#     roots = np.array(roots)
+#     unstable_ss = np.array(unstable_ss)
+#     unstable_Da = np.array(unstable_Da)
+#     stable_ss1 = np.array(stable_ss1)
+#     stable_Da1 = np.array(stable_Da1)
+#     stable_ss2 = np.array(stable_ss2)
+#     stable_Da2 = np.array(stable_Da2)
+    
+#     if verbose:
+    
+#         fig = plt.figure(figsize=(15,15))
+#         ax1 = fig.add_subplot(111)
+#         ax1.plot(stable_Da1,stable_ss1[:,0],'k')
+#         ax1.plot(stable_Da2,stable_ss2[:,0],'k')
+#         ax1.plot(unstable_Da,unstable_ss[:,0],'k--')
+#         ax1.plot(Da_arr, x1min, 'k')
+#         ax1.plot(Da_arr, x1max, 'k')
+#         ax1.set_xlabel(r'Da', fontsize=30)
+#         ax1.set_ylabel(r'$x_1$', fontsize=30)
+#         ax1.tick_params(axis='both', which='major', labelsize=20)
+#         fig.savefig('/home/smalani/PartialObservations/data/Bifurcation Plot True x1.png',format='png')
+
+#         fig = plt.figure(figsize=(15,15))
+#         ax1 = fig.add_subplot(111)
+#         ax1.plot(stable_Da1,stable_ss1[:,1],'k')
+#         ax1.plot(stable_Da2,stable_ss2[:,1],'k')
+#         ax1.plot(unstable_Da,unstable_ss[:,1],'k--')
+#         ax1.plot(Da_arr, x2min, 'k')
+#         ax1.plot(Da_arr, x2max, 'k')
+#         ax1.set_xlabel(r'Da', fontsize=30)
+#         ax1.set_ylabel(r'$x_2$', fontsize=30)
+#         ax1.tick_params(axis='both', which='major', labelsize=20)
+#         fig.savefig('/home/smalani/PartialObservations/data/Bifurcation Plot True x2.png',format='png')
+#     return unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max, x1LC, x2LC
+    

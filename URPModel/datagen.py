@@ -70,7 +70,7 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
                   dt_dist=(config["DATA"]["DT_MU"],
                            config["DATA"]["DT_SIGMA"]),
                   init_available=config["DATA"]["INIT_AVAILABLE"],
-                  full_observations=True,
+                  full_observations=config["DATA"]["FULL_OBSERVATIONS"],
                   Da_random=False,
                   detail=False,
                   Da_set=0.33,
@@ -107,7 +107,7 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
     for i in range(n_train):
         if reg_time:
             x1_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num)
-            x2_times = np.linspace(skip_time, tmax+skip_time, x1_sample_num)
+            x2_times = np.linspace(skip_time, tmax+skip_time, x2_sample_num)
             x1_times_arr.append(np.array(x1_times).round(decimals=5))
             x2_times_arr.append(np.array(x2_times).round(decimals=5))
         else:
@@ -122,12 +122,25 @@ def generate_data(n_train=config["DATA"]["N_TRAIN"],
                 mu = mu * (max(x1_sample_num, x2_sample_num) - 1) / max(x1_sample_num, x2_sample_num)
                 k = (mu/sigma) ** 2
                 theta = mu/k
-                x1_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
-                x2_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
-            while len(x1_times) < x1_sample_num:
-                x1_times.append(x1_times[-1] + np.abs(dt_rng.gamma(k, theta)))
-            while len(x2_times) < x2_sample_num:
-                x2_times.append(x2_times[-1] + np.abs(dt_rng.gamma(k, theta)))
+                if full_observations:
+                    x1x2_dt = np.abs(dt_rng.gamma(k, theta))
+                    x1_times.append(skip_time + x1x2_dt)
+                    x2_times.append(skip_time + x1x2_dt)
+                else:
+                    x1_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
+                    x2_times.append(skip_time + np.abs(dt_rng.gamma(k, theta)))
+
+            if full_observations:
+                assert x1_sample_num == x2_sample_num
+                while len(x1_times) < x1_sample_num:
+                    x1x2_dt = np.abs(dt_rng.gamma(k, theta))
+                    x1_times.append(x1_times[-1] + x1x2_dt)
+                    x2_times.append(x2_times[-1] + x1x2_dt)
+            else:
+                while len(x1_times) < x1_sample_num:
+                    x1_times.append(x1_times[-1] + np.abs(dt_rng.gamma(k, theta)))
+                while len(x2_times) < x2_sample_num:
+                    x2_times.append(x2_times[-1] + np.abs(dt_rng.gamma(k, theta)))
             x1_times_arr.append(np.array(x1_times).round(decimals=5))
             x2_times_arr.append(np.array(x2_times).round(decimals=5))
         solver_times_arr.append(np.sort(np.unique(np.concatenate(([skip_time], x1_times_arr[i], x2_times_arr[i])))))

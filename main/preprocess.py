@@ -8,7 +8,7 @@ from config import config
 import torch
 
 np.random.seed(1234)
-torch.manual_seed(42)
+# torch.manual_seed(42)
 
 class Dataset(torch.utils.data.Dataset):
 

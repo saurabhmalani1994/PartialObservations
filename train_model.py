@@ -135,6 +135,10 @@ def main(config):
     print(network)
     # Move network to corresponding device (cpu or gpu)
     network.to(network.device)
+
+    for p in network.parameters():
+        print(p)
+    assert False
     
 #     print(network.layers)
 
