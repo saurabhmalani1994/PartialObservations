@@ -372,7 +372,7 @@ def load_network(filename=None):
     
 #     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_URP2/minmax/minmax.npz")
     
     xmax = f['arr_0']
     xmin = f['arr_1']
@@ -614,8 +614,8 @@ def make_RHS(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5])
             fig.savefig('/home/smalani/PartialObservations/Figures/Prediction of Experiment Parameters' + '.png',format='png')
     
     
-def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5]):
-    network = load_network()
+def make_transients(Da_list = [0.2, 0.25, 0.28, 0.3, 0.33, 0.36, 0.4, 0.42, 0.45, 0.5], filename=None):
+    network = load_network(filename)
     index = 0
     
     for i in range(len(Da_list)):

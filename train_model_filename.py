@@ -36,10 +36,14 @@ def main(config, filename):
                                 shuffle=True, num_workers=1, pin_memory=True)
     
     
-    xmax = np.nanmax(np.nanmax(np.array(dataset_train.x), axis=1), axis=0)
-    xmin = np.nanmin(np.nanmin(np.array(dataset_train.x), axis=1), axis=0)
-    xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
+    # xmax = np.nanmax(np.nanmax(np.array(dataset_train.x), axis=1), axis=0)
+    # xmin = np.nanmin(np.nanmin(np.array(dataset_train.x), axis=1), axis=0)
+    # xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
+
+    f = np.load("/home/smalani/PartialObservations_URP2/minmax/minmax.npz")
     
+    xmax = f['arr_0']
+    xmin = f['arr_1']
     print('maxmins')
     print(xmax)
     print(xmin)

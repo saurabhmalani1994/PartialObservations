@@ -12,7 +12,7 @@ config["DATA"]["X2_SAMPLE_NUM"] = 13
 config["DATA"]["MAX_DELTA_T"] = 0.1 # Timestep in integrator
 config["DATA"]["DT_MU"] = 0.5
 config["DATA"]["DT_SIGMA"] = 0.5
-config["DATA"]["REG_TIME"] = False   # True for regular sampling in time (Delta_T = const), False for random sampling in time Gamma~ (DT, DT_Sigma)
+config["DATA"]["REG_TIME"] = False   # True for regular sampling in time (Delta_T = const), False for random sampling in time Uniform~ (0, Delta_T)
 config["DATA"]["INIT_AVAILABLE"] = True   # True for ALL initial conditions available at time 0, False for Not available
 config["DATA"]["FULL_OBSERVATIONS"] = True   # Only activates for REG_TIME = False
 

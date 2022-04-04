@@ -12,10 +12,66 @@ import torch
 from scipy.integrate import solve_ivp
 from scipy.optimize import fsolve
 from .datagen import f_cstr, get_pars
+np.random.seed(1234)
 
 
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
+
+def metric_ExpPar(filename=None, make_plots=False):
+    Da_sample, x1_sample, x2_sample = cloud_sample()
+    network = load_network(filename)
+    B_pred = network.additional_pars[0].detach().cpu().squeeze().numpy() * 10
+    beta_pred = network.additional_pars[1].detach().cpu().squeeze().numpy() * 10
+    B_true = 11
+    beta_true = 3
+    error = 0.5 * np.abs(B_pred - B_true) / B_true + 0.5 * np.abs(beta_pred - beta_true) / beta_true
+
+    return B_true, B_pred, beta_true, beta_pred, error
+
+def metric_Phi(filename=None, make_plots=False):
+    Da_sample, x1_sample, x2_sample = cloud_sample()
+    network = load_network(filename)
+
+    x1_sample = np.array(x1_sample)
+    x2_sample = np.array(x2_sample)
+    Da_sample = np.array(Da_sample)
+
+    x_in = torch.from_numpy(np.vstack((x1_sample,x2_sample)).T).to(network.device)
+    p_in = torch.from_numpy(Da_sample).unsqueeze(-1).to(network.device)
+
+    myB, mybeta, myD = 11, 3, np.array(Da_sample)
+    real_Phi = (Da_sample * (1-x1_sample) * np.exp(x2_sample)).reshape(-1,1)
+
+    ANN_output = network.raw_output(x_in, p_in).detach().cpu().squeeze().numpy()
+
+    pred_Phi = ANN_output.copy().reshape(-1,1)
+
+    scaler = MinMaxScaler()
+    scaler.fit(real_Phi)
+    
+    real_Phi_norm = scaler.transform(real_Phi)
+    pred_Phi_norm = scaler.transform(pred_Phi)
+
+    L1_norm = np.sum(np.sum(np.abs(real_Phi_norm - pred_Phi_norm), axis=1)) / real_Phi_norm.size
+    L2_norm = np.sum(np.sqrt(np.sum((real_Phi_norm - pred_Phi_norm) ** 2, axis=1))) / real_Phi_norm.size
+    Linf_norm = np.sum(np.max(np.abs(real_Phi_norm - pred_Phi_norm), axis=1)) / real_Phi_norm.shape[1]
+
+    if make_plots:
+        fig, ax1 = plt.subplots(1,1, figsize=(10,5))
+        ax1.scatter(real_Phi_norm[:,0], pred_Phi_norm[:,0], s=1)
+        ax1.plot([min(real_Phi_norm[:,0]), max(real_Phi_norm[:,0])], \
+            [min(real_Phi_norm[:,0]), max(real_Phi_norm[:,0])], 'k-', lw=2) 
+        ax1.set_xlabel('Real Phi x1', fontsize=15)
+        ax1.set_ylabel('Predicted Phi x1', fontsize=15)
+        ax1.xaxis.set_tick_params(labelsize=12, direction='in')
+        ax1.yaxis.set_tick_params(labelsize=12, direction='in')
+
+        fig.title('Phi Prediction', fontsize=20)
+        plt.show()
+
+
+    return real_Phi, pred_Phi, L1_norm, L2_norm, Linf_norm
 
 def metric_hairFromTrue(filename=None, make_plots=False):
     unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max, x1LC, x2LC = \
@@ -123,9 +179,9 @@ def metric_hairFromTrue(filename=None, make_plots=False):
     RHS_hair_error_trueLC_Pred_norm = scaler.transform(RHS_hair_error_trueLC_Pred)
     RHS_hair_error_trueLC_True_norm = scaler.transform(RHS_hair_error_trueLC_True)
 
-    L1_norm = np.sum((np.abs(RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm))) / RHS_hair_error_trueLC_True_norm.size
-    L2_norm = np.sqrt(np.sum(((RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm)**2))) / RHS_hair_error_trueLC_True_norm.size
-    Linf_norm = np.max(np.abs(RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm))
+    L1_norm = np.sum(np.sum((np.abs(RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm)), axis=1), axis=0) / RHS_hair_error_trueLC_True_norm.size
+    L2_norm = np.sum(np.sqrt(np.sum(((RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm)**2), axis=1)), axis=0) / RHS_hair_error_trueLC_True_norm.size
+    Linf_norm = np.sum(np.max(np.abs(RHS_hair_error_trueLC_Pred_norm - RHS_hair_error_trueLC_True_norm), axis=1)) / RHS_hair_error_trueLC_True_norm.shape[0]
 
     return RHS_hair_error_trueLC_True, RHS_hair_error_trueLC_Pred, L1_norm, L2_norm, Linf_norm
 
@@ -157,9 +213,9 @@ def metric_RHS(filename=None, make_plots=False):
     real_RHS_norm = scaler.transform(real_RHS)
     pred_RHS_norm = scaler.transform(pred_RHS)
 
-    L1_norm = np.sum(np.sum(np.abs(real_RHS_norm - pred_RHS_norm), axis=0)) / real_RHS_norm.size
-    L2_norm = np.sum(np.sqrt(np.sum((real_RHS_norm - pred_RHS_norm) ** 2, axis=0))) / real_RHS_norm.size
-    Linf_norm = np.sum(np.max(np.abs(real_RHS_norm - pred_RHS_norm), axis=0)) / real_RHS_norm.shape[1]
+    L1_norm = np.sum(np.sum(np.abs(real_RHS_norm - pred_RHS_norm), axis=1)) / real_RHS_norm.size
+    L2_norm = np.sum(np.sqrt(np.sum((real_RHS_norm - pred_RHS_norm) ** 2, axis=1))) / real_RHS_norm.size
+    Linf_norm = np.sum(np.max(np.abs(real_RHS_norm - pred_RHS_norm), axis=1)) / real_RHS_norm.shape[0]
 
     if make_plots:
         fig, (ax1, ax2) = plt.subplots(1,2, figsize=(10,5))
@@ -213,7 +269,7 @@ def load_network(filename=None):
     
 #     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-    f = np.load("/home/smalani/PartialObservations_URP/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_URP2/minmax/minmax.npz")
     
     xmax = f['arr_0']
     xmin = f['arr_1']
@@ -276,6 +332,12 @@ def load_network(filename=None):
 
                     out = torch.stack((dx1dt,dx2dt), dim=-1)
                     return out
+
+                def raw_output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+                    return g
         elif config["MODEL"]["Parameters"] == 'Fixed':
             class my_Network(Network):
                 def __init__(self, network, train_size, xdim, norm_func=lambda input, device: input,
@@ -300,6 +362,12 @@ def load_network(filename=None):
 
                     out = torch.stack((dx1dt,dx2dt), dim=-1)
                     return out
+
+                def raw_output(self, x, par):
+
+                    ANN_input = torch.cat((self.norm_func(x), par), dim=-1)
+                    g = self.net(ANN_input)[...,0]
+                    return g
         else:
             raise ValueError("Tell me whether to train the parameters!")
     else:
