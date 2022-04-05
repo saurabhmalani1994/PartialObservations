@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 from BandFModel.datagen import ode_fun, par_fun, torch_ode_fun
 from scipy.optimize import fsolve
@@ -35,19 +35,22 @@ def get_metrics(filename=None):
 def metric_Jacobian(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('minmax/limitcycle_20.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
     myvar0 = f['arr_0']
-    f = np.load('minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
-    x = np.linspace(0.99, 1.01, 5)
-    p = itertools.product(x, repeat=6)
+    # x = np.linspace(0.99, 1.01, 5)
+    # p = itertools.product(x, repeat=6)
 
-    p_arr = np.array(list(p)).T
+    # p_arr = np.array(list(p)).T
 
-    parr = np.tile(p_arr,(myvar0.shape[1]))
-    myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
-    RHS_Eval_vals = (parr * myvar0arr).T
+    # parr = np.tile(p_arr,(myvar0.shape[1]))
+    # myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
+    # RHS_Eval_vals = (parr * myvar0arr).T
+
+    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    RHS_Eval_vals = f#['arr_0']
 
     pars = par_fun()
     def torchfun(x):
@@ -57,32 +60,76 @@ def metric_Jacobian(filename=None, make_plots=False):
         f_sum = lambda x: torch.sum(f(x), axis=0)
         return jacobian(f_sum, x).permute(1,0,2)
 
+    def jacobian_in_batch(func, x):
+        '''
+        Compute the Jacobian matrix in batch form.
+        Return (B, D_y, D_x)
+        '''
+        y = func(x)
+
+        batch = y.shape[0]
+        single_y_size = np.prod(y.shape[1:])
+        y = y.view(batch, -1)
+        vector = torch.ones(batch).to(y)
+
+        # Compute Jacobian row by row.
+        # dy_i / dx -> dy / dx
+        # (B, D) -> (B, 1, D) -> (B, D, D)
+        jac = [torch.autograd.grad(y[:, i], x, 
+                                grad_outputs=vector, 
+                                retain_graph=True,
+                                create_graph=True)[0].view(batch, -1)
+                    for i in range(single_y_size)]
+        jac = torch.stack(jac, dim=1)
+        
+        return jac
+
     def torchfun_pred(x):
         return network.output(x.reshape((-1,6)).to(network.device),
-                                torch.tensor([6]).reshape((-1,1)).to(network.device)).cpu()
+                                torch.tensor([6]).reshape((-1,1)).to(network.device))#.cpu()
 
-    jactrue = batch_jacobian(torchfun, torch.tensor(RHS_Eval_vals)).numpy()
-    jacpred = batch_jacobian(torchfun_pred, torch.tensor(RHS_Eval_vals)).numpy()
+    x = torch.tensor(RHS_Eval_vals.copy(), requires_grad=True)
 
-    return jactrue, jacpred
+    jactrue = jacobian_in_batch(torchfun, x).detach().numpy()
+    jacpred = jacobian_in_batch(torchfun_pred, x).detach().numpy()
+
+    scaler = MinMaxScaler()
+    jactrue_zero = jactrue.copy()
+    jactrue_zero[np.abs(jactrue_zero) < 1e-20] = 0
+
+    scaler.fit(jactrue_zero.reshape((-1,36)))
+
+    jactrue_norm = scaler.transform(jactrue.reshape((-1,36)))
+    jacpred_norm = scaler.transform(jacpred.reshape((-1,36)))
+
+    L1_error = np.sum((np.abs(jacpred_norm - jactrue_norm))) / np.size(jactrue_norm)
+    L2_error = np.sqrt(np.sum((jacpred_norm - jactrue_norm) ** 2)) / np.size(jactrue_norm)
+    Linf_error = np.average((np.max(jacpred_norm - jactrue_norm, axis=1)))
+
+
+    return jactrue, jacpred, L2_error
 
 def metric_RHS(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('minmax/limitcycle_20.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
     myvar0 = f['arr_0']
 
-    f = np.load('minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
-    x = np.linspace(0.99, 1.01, 5)
-    p = itertools.product(x, repeat=6)
-    p_arr = np.array(list(p)).T
-    parr = np.tile(p_arr,(myvar0.shape[1]))
-    myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
-    RHS_Eval_vals = (parr * myvar0arr).T
+    # x = np.linspace(0.99, 1.01, 5)
+    # p = itertools.product(x, repeat=6)
+    # p_arr = np.array(list(p)).T
+    # parr = np.tile(p_arr,(myvar0.shape[1]))
+    # myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
+    # RHS_Eval_vals = (parr * myvar0arr).T
 
-    RHS_Eval_vals = RHS_Eval_vals.reshape((-1,6))
+    # RHS_Eval_vals = RHS_Eval_vals.reshape((-1,6))
+
+    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    RHS_Eval_vals = f#['arr_0']
+
     ANN_output = network.output(torch.tensor(RHS_Eval_vals).reshape((-1,6)).to(network.device),
                                 torch.tensor([6]).reshape((-1,1)).to(network.device)).cpu().detach().numpy()
     pars = par_fun()
@@ -109,7 +156,7 @@ def metric_RHS(filename=None, make_plots=False):
         for i in range(6):
             ax = plt.subplot(int(str(23) + str(i+1)))
             axplot = ax.scatter(output[:,i], ANN_output[:,i], s=4)
-            axplot = ax.scatter(output_LC[:,i], ANN_output_LC[:,i], s=4)
+            # axplot = ax.scatter(output_LC[:,i], ANN_output_LC[:,i], s=4)
             ax.plot([np.min(output[:,i]), np.max(output[:,i])],[np.min(output[:,i]), np.max(output[:,i])], 'k-')
             ax.tick_params(axis='y', labelsize=20)
             ax.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
@@ -128,14 +175,31 @@ def metric_RHS(filename=None, make_plots=False):
         plt.savefig('Figures/Prediction_of_RHS_parallelepiped.png')
         # plt.show()
 
-    return output, ANN_output, output_LC, ANN_output_LC
+
+    scaler = MinMaxScaler()
+    output_zer = output.copy()
+    output_zer[np.abs(output_zer) < 1e-20] = 0
+
+    scaler.fit(output_zer)
+
+    # print(scaler.data_max_)
+    # print(scaler.data_min_)
+
+    output_norm = scaler.transform(output)
+    ANN_output_norm = scaler.transform(ANN_output)
+
+    L1_error = np.sum((np.abs(ANN_output_norm - output_norm))) / np.size(output_norm)
+    L2_error = np.sum(np.sqrt(np.sum((ANN_output_norm - output_norm) ** 2, axis=1))) / np.size(output_norm)
+    Linf_error = np.average((np.max(ANN_output_norm - output_norm, axis=1)))
+
+    return output, ANN_output, output_LC, ANN_output_LC, L1_error, L2_error, Linf_error
 
 def metric_hair_fromTrue(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('minmax/limitcycle_50.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_50.npz')
     myvar0 = f['arr_0']
-    f = np.load('minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     def ode_NN_func(t,x,p):
@@ -174,29 +238,44 @@ def metric_hair_fromTrue(filename=None, make_plots=False):
         RHS_hair_error_trueLC_True.append(sol_true.y[:,-1])
         RHS_hair_error_trueLC_Pred.append(sol_pred.y[:,-1])
 
-        axes[0].plot(sol_true.y[2,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
-        axes[0].plot(sol_pred.y[2,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
-        axes[0].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
-        axes[0].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
-        axes[0].set_xlabel('z', color='k', fontsize=35)
-        axes[0].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+        if make_plots:
 
-        axes[1].plot(sol_true.y[5,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
-        axes[1].plot(sol_pred.y[5,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
-        axes[1].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
-        axes[1].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
-        axes[1].set_xlabel('g', color='k', fontsize=35)
-        axes[1].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+            axes[0].plot(sol_true.y[2,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
+            axes[0].plot(sol_pred.y[2,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
+            axes[0].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
+            axes[0].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
+            axes[0].set_xlabel('z', color='k', fontsize=35)
+            axes[0].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    leg = fig.legend(handles[:2], labels[:2], loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.05))
+            axes[1].plot(sol_true.y[5,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
+            axes[1].plot(sol_pred.y[5,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
+            axes[1].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
+            axes[1].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
+            axes[1].set_xlabel('g', color='k', fontsize=35)
+            axes[1].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+    if make_plots:
+
+        handles, labels = axes[0].get_legend_handles_labels()
+        leg = fig.legend(handles[:2], labels[:2], loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.05))
 
     RHS_hair_error_trueLC_True = np.vstack(RHS_hair_error_trueLC_True)
     RHS_hair_error_trueLC_Pred = np.vstack(RHS_hair_error_trueLC_Pred)
 
-    return RHS_hair_error_trueLC_True, RHS_hair_error_trueLC_Pred
+    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
 
-def metric_hair_fromPred(filename=None, make_plots=False):
+    xmax = f['arr_0'].reshape((1,-1))
+    xmin = f['arr_1'].reshape((1,-1))
+
+    RHS_hair_error_trueLC_True_norm = (RHS_hair_error_trueLC_True) / (xmax - xmin)
+    RHS_hair_error_trueLC_Pred_norm = (RHS_hair_error_trueLC_Pred) / (xmax - xmin)
+
+    L1_error = np.sum(np.abs(RHS_hair_error_trueLC_True_norm - RHS_hair_error_trueLC_Pred_norm)) / np.size(RHS_hair_error_trueLC_True_norm)
+    L2_error = np.sum(np.sqrt(np.sum((RHS_hair_error_trueLC_True_norm - RHS_hair_error_trueLC_Pred_norm) ** 2, axis=1))) / np.size(RHS_hair_error_trueLC_True_norm)
+    Linf_error = np.average(np.max(np.abs(RHS_hair_error_trueLC_True_norm - RHS_hair_error_trueLC_Pred_norm), axis=1))
+
+    return RHS_hair_error_trueLC_True, RHS_hair_error_trueLC_Pred, L1_error, L2_error, Linf_error
+
+def metric_hair_fromPred(filename=None, make_plots=False, fsolve_guess=None):
     network = load_model(filename=filename)
     pars = par_fun()
 
@@ -221,16 +300,32 @@ def metric_hair_fromPred(filename=None, make_plots=False):
 
         return sol.y[:,-1] - init
 
-    fsolve_guess = np.array([150, 0, 0.33, 100, 1000, 0.75])
+    def find_nearest(array, value):
+        array = np.asarray(array)
+        idx = (np.abs(array - value)).argmin()
+        return idx
+
+    init = np.array([2.40532419e+01, 5.27099762e-02, 3.39122858e-01, 1.77707419e+02, 6.95034632e+02, 8.01938465e-01])
+    teval = np.linspace(800,1000,1000)
+    sol_pred = solve_ivp(ode_NN_func, y0=init, t_span=[0, 1000], args=([6]),
+                                t_eval=teval, rtol=1e-5, atol=1e-8)
+
+    index = find_nearest(sol_pred.y[0,:], 50)
+
+    fsolve_guess = sol_pred.y[:,index].copy()
+    fsolve_guess[0] = 200
+
     root_pred = fsolve(fsolve_fun_pred, fsolve_guess)
 
     init = np.array([50])
     init = np.concatenate((init, root_pred[1:]))
+
     T = root_pred[0]
-    teval = np.linspace(0,T,100)
-    sol_pred = solve_ivp(ode_NN_func, y0=init, t_span=[0, T],
+    teval = np.linspace(0,T,50)
+    sol_pred_LC = solve_ivp(ode_NN_func, y0=init, t_span=[0, T],
                             t_eval=teval, args=([6]),
                             rtol=1e-5, atol=1e-8)
+
 
     if make_plots:
         fig = plt.figure(figsize=(20,10))
@@ -242,8 +337,8 @@ def metric_hair_fromPred(filename=None, make_plots=False):
     RHS_hair_error_predLC_True = []
     RHS_hair_error_predLC_Pred = []
 
-    for j in range(sol_pred.shape[1]):
-        init = sol_pred[:,j]
+    for j in range(sol_pred_LC.y.shape[1]):
+        init = sol_pred_LC.y[:,j]
         # print(init)
 
         pars = par_fun()
@@ -263,29 +358,45 @@ def metric_hair_fromPred(filename=None, make_plots=False):
         RHS_hair_error_predLC_True.append(sol_true.y[:,-1])
         RHS_hair_error_predLC_Pred.append(sol_pred.y[:,-1])
 
-        axes[0].plot(sol_true.y[2,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
-        axes[0].plot(sol_pred.y[2,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
-        axes[0].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
-        axes[0].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
-        axes[0].set_xlabel('z', color='k', fontsize=35)
-        axes[0].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+        if make_plots:
 
-        axes[1].plot(sol_true.y[5,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
-        axes[1].plot(sol_pred.y[5,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
-        axes[1].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
-        axes[1].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
-        axes[1].set_xlabel('g', color='k', fontsize=35)
-        axes[1].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+            axes[0].plot(sol_true.y[2,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
+            axes[0].plot(init[2],init[0],'bx')
+            axes[0].plot(sol_pred.y[2,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
+            axes[0].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
+            axes[0].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
+            axes[0].set_xlabel('z', color='k', fontsize=35)
+            axes[0].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
 
-    handles, labels = axes[0].get_legend_handles_labels()
-    leg = fig.legend(handles[:2], labels[:2], loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.05))
+            axes[1].plot(sol_true.y[5,:],sol_true.y[0,:], 'k', label='True ODE', linewidth=2)
+            axes[1].plot(sol_pred.y[5,:],sol_pred.y[0,:], 'b', label='Trained Model', linewidth=2)
+            axes[1].set_ylabel('x  ', color='k', fontsize=35, rotation=0)
+            axes[1].tick_params(axis='y', labelsize=20, direction='in', length=8, width=2)
+            axes[1].set_xlabel('g', color='k', fontsize=35)
+            axes[1].tick_params(axis='x', labelsize=20, direction='in', length=8, width=2)
+
+    if make_plots:
+        handles, labels = axes[0].get_legend_handles_labels()
+        leg = fig.legend(handles[:2], labels[:2], loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.05))
 
     RHS_hair_error_predLC_True = np.vstack(RHS_hair_error_predLC_True)
     RHS_hair_error_predLC_Pred = np.vstack(RHS_hair_error_predLC_Pred)
 
-    return RHS_hair_error_predLC_True, RHS_hair_error_predLC_Pred
+    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
 
-def make_poincare_maps(filename=None, make_plots=False):
+    xmax = f['arr_0'].reshape((1,-1))
+    xmin = f['arr_1'].reshape((1,-1))
+
+    RHS_hair_error_predLC_True_norm = (RHS_hair_error_predLC_True) / (xmax - xmin)
+    RHS_hair_error_predLC_Pred_norm = (RHS_hair_error_predLC_Pred) / (xmax - xmin)
+
+    L1_error = np.sum(np.abs(RHS_hair_error_predLC_True_norm - RHS_hair_error_predLC_Pred_norm)) / np.size(RHS_hair_error_predLC_True_norm)
+    L2_error = np.sum(np.sqrt(np.sum((RHS_hair_error_predLC_True_norm - RHS_hair_error_predLC_Pred_norm) ** 2, axis=0))) / np.size(RHS_hair_error_predLC_True_norm)
+    Linf_error = np.average(np.max(np.abs(RHS_hair_error_predLC_True_norm - RHS_hair_error_predLC_Pred_norm), axis=1))
+
+    return RHS_hair_error_predLC_True, RHS_hair_error_predLC_Pred, root_pred, L1_error, L2_error, Linf_error
+
+def make_poincare_maps(filename=None, savefilename=None, make_plots=False, fsolve_guess_pred=None):
     network = load_model(filename=filename)
     pars = par_fun()
 
@@ -329,8 +440,33 @@ def make_poincare_maps(filename=None, make_plots=False):
 
         return sol.y[:,-1] - init
 
-    fsolve_guess = np.array([150, 0, 0.33, 100, 1000, 0.75])
+    # fsolve_guess = np.array([150, 0, 0.33, 100, 1000, 0.75])
     # fsolve_guess = root_true
+    def find_nearest(array, value):
+        array = np.asarray(array)
+        idx = (np.abs(array - value)).argmin()
+        return idx
+
+    if fsolve_guess_pred is None:
+        fsolve_guess = np.array([200, 0, 0.285, 120, 1300, 0.66])
+    else:
+        fsolve_guess = fsolve_guess_pred
+
+    # init = fsolve_guess.copy()
+    # init[0] = 50
+    init = np.array([2.40532419e+01, 5.27099762e-02, 3.39122858e-01, 1.77707419e+02, 6.95034632e+02, 8.01938465e-01])
+    teval = np.linspace(800,1000,1000)
+    sol_pred = solve_ivp(ode_NN_func, y0=init, t_span=[0, 1000], args=([6]),
+                                t_eval=teval, rtol=1e-5, atol=1e-8)
+
+    index = find_nearest(sol_pred.y[0,:], 50)
+
+    fsolve_guess = sol_pred.y[:,index].copy()
+    fsolve_guess[0] = 200
+
+    print('My guess')
+    print(sol_pred.y[:,index])
+
     root_pred = fsolve(fsolve_fun_pred, fsolve_guess)
 
     if make_plots:
@@ -436,12 +572,94 @@ def make_poincare_maps(filename=None, make_plots=False):
         # plt.legend(fontsize=20, mode="expand")
 
         handles, labels = ax.get_legend_handles_labels()
-        leg = fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=20, bbox_to_anchor= (0.5, -0.1))
+        leg = fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.1))
         leg.get_frame().set_linewidth(0.0)
 
         plt.suptitle('Limit Cycle Prediction', fontsize=30)
         plt.tight_layout()
-        plt.savefig('Figures/Prediction_LimitCycle.png')
+        if savefilename is None:
+            savefilename = 'Figures/Prediction_LimitCycle.png'
+        plt.savefig(savefilename, bbox_extra_artists=(leg,), bbox_inches='tight')
+
+def metric_phi(filename=None, make_plots=False):
+    if config["MODEL"]["BOX"] == 'Black':
+        return None
+
+    network = load_model(filename=filename)
+
+    # f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
+    # myvar0 = f['arr_0']
+
+    # f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    # myvar0_detail = f['arr_0']
+
+    # x = np.linspace(0.99, 1.01, 5)
+    # p = itertools.product(x, repeat=6)
+    # p_arr = np.array(list(p)).T
+    # parr = np.tile(p_arr,(myvar0.shape[1]))
+    # myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
+    # RHS_Eval_vals = (parr * myvar0arr).T
+
+    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    RHS_Eval_vals = f#['arr_0']
+    RHS_Eval_vals = RHS_Eval_vals.reshape((-1,6))
+
+    
+    phi_pred = network.raw_output(torch.tensor(RHS_Eval_vals).reshape((-1,6)).to(network.device),
+                                torch.tensor([6]).reshape((-1,1)).to(network.device)).cpu().detach().numpy()
+    pars = par_fun()
+
+    x = RHS_Eval_vals[...,0].reshape((-1,))
+    y = RHS_Eval_vals[...,1].reshape((-1,))
+    z = RHS_Eval_vals[...,2].reshape((-1,))
+    u = RHS_Eval_vals[...,3].reshape((-1,))
+    v = RHS_Eval_vals[...,4].reshape((-1,))
+    g = RHS_Eval_vals[...,5].reshape((-1,))
+
+    alpha, uf, omega, sigma, rho, eta, phi1, phi2, uc1_prime, uc2_prime, uc3_prime = pars
+    u1_prime = x * u / ((1+u) * (1+g))
+    u2_prime = y * phi1 * v / (1+v)
+    u3_prime = z * phi2 * v / (sigma + v)
+
+    phi_true = np.stack((u1_prime, u2_prime, u3_prime), axis=1)
+
+    scaler = MinMaxScaler()
+    output_zer = phi_true.copy()
+    output_zer[np.abs(output_zer) < 1e-20] = 0
+
+    scaler.fit(output_zer)
+
+    # print(scaler.data_max_)
+    # print(scaler.data_min_)
+
+    phi_true_norm = scaler.transform(phi_true)
+    phi_pred_norm = scaler.transform(phi_pred)
+
+    L1_error = np.sum((np.abs(phi_pred_norm - phi_true_norm))) / np.size(phi_true_norm)
+    L2_error = np.sum(np.sqrt(np.sum((phi_pred_norm - phi_true_norm) ** 2, axis=1))) / np.size(phi_true_norm)
+    Linf_error = np.average((np.max(phi_pred_norm - phi_true_norm, axis=1)))
+
+    return phi_true, phi_pred, L1_error, L2_error, Linf_error
+
+def metric_exppar(filename=None, make_plots=False):
+    if config["MODEL"]["BOX"] == 'Black':
+        return None
+
+    network = load_model(filename=filename)
+
+    
+    _, _, omega, sigma, rho, eta, _, _, _, _, _ = par_fun()
+
+    true_pars = np.array([omega, sigma, rho, eta])
+    pred_pars = np.array([network.additional_pars[-4].detach().cpu().numpy() * 10,
+                         network.additional_pars[-3].detach().cpu().numpy() * 10,
+                         network.additional_pars[-2].detach().cpu().numpy() / 10,
+                         network.additional_pars[-1].detach().cpu().numpy()])
+
+    error = np.average(np.abs((true_pars - pred_pars) / true_pars))
+
+    return true_pars, pred_pars, error
+    
 
 def load_model(filename=None):
 
@@ -451,9 +669,9 @@ def load_model(filename=None):
     xmax = f['arr_0']
     xmin = f['arr_1']
     
-    print('maxmins')
-    print(xmax)
-    print(xmin)
+    # print('maxmins')
+    # print(xmax)
+    # print(xmin)
     
     
     norm_func = lambda input, device: (input - torch.tensor(xmin).float().to(device)) / \
@@ -518,7 +736,7 @@ def load_model(filename=None):
                     rho = self.additional_pars[-2] / 10
                     eta = self.additional_pars[-1]
 
-                    alpha, uf, _, _, _, _, _, _, uc1_prime, uc2_prime, uc3_prime = datagen.par_fun()
+                    alpha, uf, _, _, _, _, _, _, uc1_prime, uc2_prime, uc3_prime = par_fun()
 
                     output = []
 
@@ -558,7 +776,7 @@ def load_model(filename=None):
                     x, y, z, u, v, g = torch.unbind(x_input, dim=-1)
                     u1_prime_x, u2_prime_y, u3_prime_z = torch.unbind(ANN_output, dim=-1)
 
-                    alpha, uf, omega, sigma, rho, eta, phi1, phi2, uc1_prime, uc2_prime, uc3_prime = datagen.par_fun(D=1/7.3, sf=2.5)
+                    alpha, uf, omega, sigma, rho, eta, phi1, phi2, uc1_prime, uc2_prime, uc3_prime = par_fun(D=1/7.3, sf=2.5)
 
                     output = []
 
@@ -595,7 +813,7 @@ def load_model(filename=None):
     state_dict = torch.load(filename, map_location=torch.device(device))
     network.load_state_dict(state_dict, strict=False)
 
-    print(network)
+    # print(network)
     network.double()
 
     return network

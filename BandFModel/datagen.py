@@ -20,7 +20,7 @@ def initial_conditions(ic='random'):
         #                  np.random.uniform(0.01,2200,1),
         #                  np.random.uniform(0.01,4.5,1)))
 
-        f = np.load('minmax/initialcond.npz')
+        f = np.load('/home/smalani/PartialObservations/minmax/initialcond.npz')
         myvar0 = f['arr_0']
         index = np.random.choice(myvar0.shape[1])
         range = (np.max(myvar0, axis=1) - np.min(myvar0, axis=1))[0,:]
