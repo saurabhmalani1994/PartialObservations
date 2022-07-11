@@ -573,7 +573,7 @@ def make_poincare_maps(filename=None, savefilename=None, make_plots=False, fsolv
         # plt.legend(fontsize=20, mode="expand")
 
         handles, labels = ax.get_legend_handles_labels()
-        leg = fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.1))
+        leg = fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.12))
         leg.get_frame().set_linewidth(0.0)
 
         plt.suptitle('Limit Cycle Prediction', fontsize=30)
@@ -694,8 +694,64 @@ def make_transient(init=None, filename=None, savefilename=None, T=20):
     labels = ['x', 'y', 'z', 'u', 'v', 'g']
     for i in range(6):
         ax = plt.subplot(int(str(61) + str(i+1)))
-        ax.plot(sol_true.t, sol_true.y[i,:], 'k', label='True ODE', linewidth=2)
-        ax.plot(sol_pred.t, sol_pred.y[i,:], 'b', label='Trained Model', linewidth=2)
+        ax.plot(sol_true.t, sol_true.y[i,:], 'k', label='Ground Truth', linewidth=2)
+        ax.plot(sol_pred.t, sol_pred.y[i,:], 'b', label='Model Prediction', linewidth=2)
+        ax.set_ylabel(labels[i], color='k', fontsize=25)
+        ax.tick_params(axis='y', labelsize=20)          
+        ax.yaxis.get_offset_text().set_fontsize(20)                    
+        if i<5:
+            ax.set_xticks([])
+    # plt.tight_layout()
+    plt.subplots_adjust(hspace=0.4)
+    handles, labels = ax.get_legend_handles_labels()
+    leg = fig.legend(handles, labels, loc='lower center', ncol=2, fontsize=30, bbox_to_anchor= (0.5, -0.05))
+    leg.get_frame().set_linewidth(0.0)
+
+    for l in leg.get_lines():
+        l.set_linewidth(6)
+
+    plt.xlabel('Time', fontsize=25)
+    plt.suptitle('Short Transient Predictions', fontsize=30)
+    ax.tick_params(axis='x', labelsize=20)
+
+    if savefilename is not None:
+        plt.savefig(savefilename, bbox_extra_artists=(leg,), bbox_inches='tight')
+
+
+
+def IC_transient(filename=None, savefilename=None, T=20):
+    network = load_model(filename=filename)
+
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_50.npz')
+    myvar0 = f['arr_0']
+    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    myvar0_detail = f['arr_0']
+
+    def ode_NN_func(t,x,p):
+        x_in = torch.tensor(x).reshape((-1,6)).to(network.device)
+        p_in = torch.tensor(p).reshape((-1,1)).to(network.device)
+        return network.output(x_in, p_in).cpu().detach().numpy()
+
+    init = network.initial_x
+
+    pars = par_fun()
+
+    teval = np.linspace(0,T,1000)
+
+    sol_true = solve_ivp(ode_fun, y0=init, t_span=[0, T],
+                            t_eval=teval, args=(pars,),
+                            rtol=1e-5, atol=1e-8)
+
+    sol_pred = solve_ivp(ode_NN_func, y0=init, t_span=[0, T],
+                            t_eval=teval, args=([6]),
+                            rtol=1e-5, atol=1e-8)
+
+    fig = plt.figure(figsize=(10,10))
+    labels = ['x', 'y', 'z', 'u', 'v', 'g']
+    for i in range(6):
+        ax = plt.subplot(int(str(61) + str(i+1)))
+        ax.plot(sol_true.t, sol_true.y[i,:], 'k', label='Ground Truth', linewidth=2)
+        ax.plot(sol_pred.t, sol_pred.y[i,:], 'b', label='Model Prediction', linewidth=2)
         ax.set_ylabel(labels[i], color='k', fontsize=25)
         ax.tick_params(axis='y', labelsize=20)          
         ax.yaxis.get_offset_text().set_fontsize(20)                    

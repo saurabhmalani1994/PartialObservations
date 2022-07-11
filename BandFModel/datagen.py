@@ -4,7 +4,8 @@ sys.path.append("..")
 import numpy as np
 from scipy.integrate import solve_ivp
 from tqdm.auto import tqdm
-from PartialObservations.config import config
+# from PartialObservations.config import config
+from config import config
 
 import matplotlib.pyplot as plt
 import torch
