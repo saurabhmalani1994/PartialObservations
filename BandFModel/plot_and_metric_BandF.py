@@ -36,9 +36,9 @@ def get_metrics(filename=None):
 def metric_Jacobian(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_20.npz')
     myvar0 = f['arr_0']
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     # x = np.linspace(0.99, 1.01, 5)
@@ -50,7 +50,7 @@ def metric_Jacobian(filename=None, make_plots=False):
     # myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
     # RHS_Eval_vals = (parr * myvar0arr).T
 
-    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/cloudsamplepoints.npy')
     RHS_Eval_vals = f#['arr_0']
 
     pars = par_fun()
@@ -113,10 +113,10 @@ def metric_Jacobian(filename=None, make_plots=False):
 def metric_RHS(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_20.npz')
     myvar0 = f['arr_0']
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     # x = np.linspace(0.99, 1.01, 5)
@@ -128,7 +128,7 @@ def metric_RHS(filename=None, make_plots=False):
 
     # RHS_Eval_vals = RHS_Eval_vals.reshape((-1,6))
 
-    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/cloudsamplepoints.npy')
     RHS_Eval_vals = f#['arr_0']
 
     ANN_output = network.output(torch.tensor(RHS_Eval_vals).reshape((-1,6)).to(network.device),
@@ -198,9 +198,9 @@ def metric_RHS(filename=None, make_plots=False):
 def metric_hair_fromTrue(filename=None, make_plots=False):
     network = load_model(filename=filename)
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_50.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_50.npz')
     myvar0 = f['arr_0']
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     def ode_NN_func(t,x,p):
@@ -262,7 +262,7 @@ def metric_hair_fromTrue(filename=None, make_plots=False):
     RHS_hair_error_trueLC_True = np.vstack(RHS_hair_error_trueLC_True)
     RHS_hair_error_trueLC_Pred = np.vstack(RHS_hair_error_trueLC_Pred)
 
-    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_BF/PartialObservations/minmax/minmax.npz")
 
     xmax = f['arr_0'].reshape((1,-1))
     xmin = f['arr_1'].reshape((1,-1))
@@ -383,7 +383,7 @@ def metric_hair_fromPred(filename=None, make_plots=False, fsolve_guess=None):
     RHS_hair_error_predLC_True = np.vstack(RHS_hair_error_predLC_True)
     RHS_hair_error_predLC_Pred = np.vstack(RHS_hair_error_predLC_Pred)
 
-    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_BF/PartialObservations/minmax/minmax.npz")
 
     xmax = f['arr_0'].reshape((1,-1))
     xmin = f['arr_1'].reshape((1,-1))
@@ -588,10 +588,10 @@ def metric_phi(filename=None, make_plots=False):
 
     network = load_model(filename=filename)
 
-    # f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_20.npz')
+    # f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_20.npz')
     # myvar0 = f['arr_0']
 
-    # f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    # f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     # myvar0_detail = f['arr_0']
 
     # x = np.linspace(0.99, 1.01, 5)
@@ -601,7 +601,7 @@ def metric_phi(filename=None, make_plots=False):
     # myvar0arr = np.repeat(myvar0,(p_arr.shape[1]), axis=1)
     # RHS_Eval_vals = (parr * myvar0arr).T
 
-    f = np.load('/home/smalani/PartialObservations/minmax/cloudsamplepoints.npy')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/cloudsamplepoints.npy')
     RHS_Eval_vals = f#['arr_0']
     RHS_Eval_vals = RHS_Eval_vals.reshape((-1,6))
 
@@ -665,9 +665,9 @@ def metric_exppar(filename=None, make_plots=False):
 def make_transient(init=None, filename=None, savefilename=None, T=20):
     network = load_model(filename=filename)
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_50.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_50.npz')
     myvar0 = f['arr_0']
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     def ode_NN_func(t,x,p):
@@ -698,7 +698,9 @@ def make_transient(init=None, filename=None, savefilename=None, T=20):
         ax.plot(sol_pred.t, sol_pred.y[i,:], 'b', label='Model Prediction', linewidth=2)
         ax.set_ylabel(labels[i], color='k', fontsize=25)
         ax.tick_params(axis='y', labelsize=20)          
-        ax.yaxis.get_offset_text().set_fontsize(20)                    
+        ax.yaxis.get_offset_text().set_fontsize(20)         
+        if i == 1:
+            ax.set_ylim([-5e-4,5e-4])           
         if i<5:
             ax.set_xticks([])
     # plt.tight_layout()
@@ -722,9 +724,9 @@ def make_transient(init=None, filename=None, savefilename=None, T=20):
 def IC_transient(filename=None, savefilename=None, T=20):
     network = load_model(filename=filename)
 
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_50.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_50.npz')
     myvar0 = f['arr_0']
-    f = np.load('/home/smalani/PartialObservations/minmax/limitcycle_detail.npz')
+    f = np.load('/home/smalani/PartialObservations_BF/PartialObservations/minmax/limitcycle_detail.npz')
     myvar0_detail = f['arr_0']
 
     def ode_NN_func(t,x,p):
@@ -777,7 +779,7 @@ def IC_transient(filename=None, savefilename=None, T=20):
 def load_model(filename=None):
 
 
-    f = np.load("/home/smalani/PartialObservations/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_BF/PartialObservations/minmax/minmax.npz")
 
     xmax = f['arr_0']
     xmin = f['arr_1']
