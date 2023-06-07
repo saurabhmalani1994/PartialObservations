@@ -269,7 +269,7 @@ def load_network(filename=None):
     
 #     xmaxmin = np.savez("minmax/minmax.npz",xmax, xmin)
     
-    f = np.load("/home/smalani/PartialObservations_URP2/minmax/minmax.npz")
+    f = np.load("/home/smalani/PartialObservations_BF/PartialObservations/minmax/minmax.npz")
     
     xmax = f['arr_0']
     xmin = f['arr_1']
@@ -378,7 +378,7 @@ def load_network(filename=None):
 
     # filename = config["DATA"]["PATH"]+'model_' + '.net'
     if filename is None:
-        filename = "/home/smalani/PartialObservations/data/"+'model_' + '.net'
+        filename = "/home/smalani/PartialObservations_BF/PartialObservations/data/"+'model_' + '.net'
 
     print(filename)
 
@@ -517,7 +517,7 @@ def make_Bifurc_true(make_plots=False):
         ax1.set_xlabel(r'Da', fontsize=30)
         ax1.set_ylabel(r'$x_1$', fontsize=30)
         ax1.tick_params(axis='both', which='major', labelsize=20)
-        fig.savefig('/home/smalani/PartialObservations/data/Bifurcation Plot True x1.png',format='png')
+        fig.savefig('/home/smalani/PartialObservations_BF/PartialObservations/data/Bifurcation Plot True x1.png',format='png')
 
         fig = plt.figure(figsize=(15,15))
         ax1 = fig.add_subplot(111)
@@ -529,7 +529,7 @@ def make_Bifurc_true(make_plots=False):
         ax1.set_xlabel(r'Da', fontsize=30)
         ax1.set_ylabel(r'$x_2$', fontsize=30)
         ax1.tick_params(axis='both', which='major', labelsize=20)
-        fig.savefig('/home/smalani/PartialObservations/data/Bifurcation Plot True x2.png',format='png')
+        fig.savefig('/home/smalani/PartialObservations_BF/PartialObservations/data/Bifurcation Plot True x2.png',format='png')
     return unstable_ss, unstable_Da, stable_ss1, stable_Da1, stable_ss2, stable_Da2, Da_arr, x1min, x2min, x1max, x2max, period, period_point
 
 def make_Bifurc_prediction(make_plots=False, filename=None):
@@ -657,7 +657,7 @@ def make_Bifurc_prediction(make_plots=False, filename=None):
         
     return unstable_ss, unstable_Da, stable_ss, stable_Da, Da_arr, x1min, x2min, x1max, x2max
  
-def make_Bifurc_true_with_LC(make_plots=False):
+def make_Bifurc_true_with_LC(make_plots=False, B=11, beta=3):
     Da_arr = np.linspace(0.2,0.5,100)
     
     stable_ss1 = []
@@ -684,7 +684,7 @@ def make_Bifurc_true_with_LC(make_plots=False):
     for i in range(len(Da_arr)):
         Da = Da_arr[i]
         
-        pars = get_pars(Da)
+        pars = get_pars(Da, B=B, beta=beta)
         
         numpy_f_cstr = lambda y: f_cstr(0, y, *pars)
         numpy_f_cstr_integ = lambda t, y: f_cstr(0, y, *pars)
